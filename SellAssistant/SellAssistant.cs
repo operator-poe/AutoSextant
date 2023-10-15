@@ -48,7 +48,6 @@ public static class SellAssistant
             Error.AddAndShow("SellAssistant", "Stash is not visible");
             return;
         }
-        Input.KeyUp(System.Windows.Forms.Keys.ControlKey);
         var inventoryRect = I.GameController.Game.IngameState.IngameUi.InventoryPanel.GetClientRect();
         _windowPos = (new System.Numerics.Vector2(inventoryRect.X, inventoryRect.Y),
         new System.Numerics.Vector2(inventoryRect.Width, inventoryRect.Height / 2));
@@ -77,8 +76,6 @@ public static class SellAssistant
 
     private static void RefreshTable()
     {
-        selectedAmount = 1;
-        selectedMod = "";
         CompassCounts.Clear();
 
         var dumpTabs = I.Settings.DumpTabs.Value.Split(',').Select(x => x.Trim()).ToList();
@@ -101,6 +98,15 @@ public static class SellAssistant
                     }
                 }
             }
+        }
+
+        if (selectedMod != "" && !CompassCounts.ContainsKey(selectedMod))
+        {
+            selectedMod = "";
+        }
+        else if (selectedMod != "")
+        {
+            selectedAmount = CompassCounts[selectedMod];
         }
     }
 

@@ -153,7 +153,7 @@ public class Inventory
 
 
 
-      for (int x = 4; x < 12; x++)
+      for (int x = 5; x < 12; x++)
       {
         for (int y = 0; y < 5; y++)
         {

@@ -181,6 +181,7 @@ public class AutoSextant : BaseSettingsPlugin<AutoSextantSettings>
                     yield return Input.ClickElement(nextSextant.Position, System.Windows.Forms.MouseButtons.Right);
                 }
                 yield return Input.ClickElement(stone.Position);
+                SessionWindow.IncreaseSextantCount();
                 yield return new WaitFunctionTimed(() => stone.Price != null && stone.Price.Name != currentName, false, 50);
                 if (stone.Price == null || stone.Price.Name == currentName)
                 {
@@ -204,6 +205,7 @@ public class AutoSextant : BaseSettingsPlugin<AutoSextantSettings>
                 }
                 yield return Input.ClickElement(nextCompass.Position, System.Windows.Forms.MouseButtons.Right);
                 yield return Input.ClickElement(stone.Position);
+                SessionWindow.AddMod(compassPrice.Name);
                 yield return Input.ClickElement(nextFreeSlot.Position);
             }
         }
@@ -223,10 +225,11 @@ public class AutoSextant : BaseSettingsPlugin<AutoSextantSettings>
         var tab1 = Stash.GetStashTabIndexForName(Settings.RestockSextantFrom.Value);
         yield return NStash.Stash.SelectTab(tab1);
 
-        yield return RestockColumn(0, ItemType.Compass);
-        yield return RestockColumn(1, ItemType.Sextant);
+        yield return RestockColumn(0, ItemType.Compass, true);
+        yield return RestockColumn(1, ItemType.Sextant, true);
         yield return RestockColumn(2, ItemType.Sextant);
         yield return RestockColumn(3, ItemType.Sextant);
+        yield return RestockColumn(4, ItemType.Sextant);
     }
 
     public IEnumerator EnsureAtlas()
@@ -341,19 +344,28 @@ public class AutoSextant : BaseSettingsPlugin<AutoSextantSettings>
         }
     }
 
-    private IEnumerator RestockColumn(int col, ItemType type)
+    private IEnumerator RestockColumn(int col, ItemType type, bool firstColumn = false)
     {
-        var compassItem = Stash.GetItemTypeFromStash(Item.ItemNames[type]).First();
+        var compassItem = Stash.GetFirstItemTypeFromStash(Item.ItemNames[type]);
+        if (compassItem == null)
+        {
+            // Only stop the entire process on entry of this function as we can still work with a partial restock
+            if (firstColumn)
+                StopAllRoutines();
+            yield break;
+        }
         var itemWidth = compassItem.GetClientRect().Width / 56 * 70;
         var inventoryPanel = Instance.GameController.Game.IngameState.IngameUi.InventoryPanel[InventoryIndex.PlayerInventory];
         Vector2 inventoryPanelPosition = inventoryPanel.InventoryUIElement.GetClientRect().TopLeft;
 
         while (Inventory.CountItemsInColumn(col) + 10 <= 50)
         {
-            var item = Stash.GetItemTypeFromStash(Item.ItemNames[type]).First();
+            var item = Stash.GetFirstItemTypeFromStash(Item.ItemNames[type]);
+            if (compassItem == null)
+                yield break;
             var itemStack = new Item(item);
             yield return itemStack.GetStack(true);
-            yield return new WaitTime(10);
+            yield return new WaitTime(1);
         }
 
 
@@ -361,7 +373,9 @@ public class AutoSextant : BaseSettingsPlugin<AutoSextantSettings>
         for (int i = 0; i < column.Count(); i++)
         {
             var slot = column[i];
-            var item = Stash.GetItemTypeFromStash(Item.ItemNames[type]).First();
+            var item = Stash.GetFirstItemTypeFromStash(Item.ItemNames[type]);
+            if (compassItem == null)
+                yield break;
             var compassesStack = item.Item.GetComponent<ExileCore.PoEMemory.Components.Stack>();
             var compassStackSize = compassesStack?.Size ?? 0;
 
@@ -406,6 +420,7 @@ public class AutoSextant : BaseSettingsPlugin<AutoSextantSettings>
 
     public override void Render()
     {
+        SessionWindow.Render();
         Error.Render();
         SellAssistant.SellAssistant.Render();
         if (Settings.PositionDebug.Value && GameController.IngameState.IngameUi.InventoryPanel.IsVisible)

@@ -12,21 +12,21 @@ public class Input : ExileCore.Input
   {
     MoveMouseToElement(pos);
     yield return Delay(delay);
-    yield return Click(mouseButton);
+    Click(mouseButton);
     yield return Delay(delay);
   }
 
 
   public static IEnumerator ClickElement(Vector2 pos, int delay)
   {
-    yield return Input.ClickElement(pos, MouseButtons.Left, delay);
+    yield return ClickElement(pos, MouseButtons.Left, delay);
   }
 
-  public static new IEnumerator Click(MouseButtons mouseButton = MouseButtons.Left)
-  {
-    ExileCore.Input.Click(mouseButton);
-    yield return Delay();
-  }
+  // public static new IEnumerator Click(MouseButtons mouseButton = MouseButtons.Left)
+  // {
+  //   ExileCore.Input.Click(mouseButton);
+  //   yield return Delay();
+  // }
 
   public static void MoveMouseToElement(Vector2 pos)
   {

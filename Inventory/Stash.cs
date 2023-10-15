@@ -100,9 +100,15 @@ public class Stash
       yield return Input.Delay(3);
     }
 
-    yield return Input.Click();
+    Input.Click(System.Windows.Forms.MouseButtons.Left);
 
     yield return Input.Delay(100);
+  }
+
+  public static NormalInventoryItem GetFirstItemTypeFromStash(string name)
+  {
+    try { return GetItemTypeFromStash(name).First(); }
+    catch { return null; }
   }
 
   public static List<NormalInventoryItem> GetItemTypeFromStash(string name)
