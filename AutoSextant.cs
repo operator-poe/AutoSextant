@@ -64,6 +64,11 @@ public class AutoSextant : BaseSettingsPlugin<AutoSextantSettings>
     {
         //Perform once-per-zone processing here
         //For example, Radar builds the zone map texture here
+
+        if (SellAssistant.SellAssistant.Enabled)
+        {
+            SellAssistant.SellAssistant.Disable();
+        }
     }
 
     private string _restockCoroutineName = "AutoSextant_RestockCoroutine";

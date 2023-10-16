@@ -86,12 +86,27 @@ public static class Chat
         yield return new WaitFunctionTimed(() => CurrentInput == null, true, 100, "Chat input not cleared (3)");
     }
 
-    public static IEnumerator Send(string[] messages)
+    public static IEnumerator Replace()
+    {
+        yield return Open();
+
+        if (CurrentInput != null && CurrentInput != "")
+        {
+            Input.KeyDown(Keys.ControlKey);
+            yield return Input.KeyPress(Keys.A);
+            Input.KeyUp(Keys.ControlKey);
+        }
+    }
+
+    public static IEnumerator Send(string[] messages, bool replace = true)
     {
         foreach (var message in messages)
         {
             yield return Open();
-            yield return Clear();
+            if (replace)
+                yield return Replace();
+            else
+                yield return Clear();
 
             Util.SetClipBoardText(message);
             yield return new WaitFunctionTimed(() => Util.GetClipboardText() == message, true, 1000, "Clipboard text not set");

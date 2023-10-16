@@ -13,6 +13,13 @@ namespace AutoSextant.SellAssistant;
 public static class SellAssistant
 {
     private static bool _enabled = false;
+    public static bool Enabled
+    {
+        get
+        {
+            return _enabled;
+        }
+    }
     public static string selectedMod = "";
     public static int selectedAmount = 1;
     public static string selectedFilter = "";
@@ -27,20 +34,33 @@ public static class SellAssistant
 
     public static readonly string _sellAssistantInitCoroutineName = "AutoSextant.SellAssistant.SellAssistant.Init";
     public static readonly string _sellAssistantTakeFromStashCoroutineName = "AutoSextant.SellAssistant.SellAssistant.TakeFromStash";
+    private static List<(string, int)> ExtractionQueue = new List<(string, int)>();
     public static bool IsAnyRoutineRunning
     {
         get
         {
             return
+                ExtractionQueue.Count > 0 ||
                 Core.ParallelRunner.FindByName(_sellAssistantInitCoroutineName) != null ||
                 Core.ParallelRunner.FindByName(_sellAssistantTakeFromStashCoroutineName) != null;
         }
     }
     public static void StopAllRoutines()
     {
+        ExtractionQueue.Clear();
         Core.ParallelRunner.FindByName(_sellAssistantInitCoroutineName)?.Done();
         Core.ParallelRunner.FindByName(_sellAssistantTakeFromStashCoroutineName)?.Done();
     }
+
+    public static void AddToExtractionQueue(string mod, int amount)
+    {
+        ExtractionQueue.Add((mod, amount));
+    }
+    public static void AddToExtractionQueue(List<(string, int)> mods)
+    {
+        ExtractionQueue.AddRange(mods);
+    }
+
     public static void Enable()
     {
         if (!NStash.Stash.IsVisible)
@@ -53,6 +73,19 @@ public static class SellAssistant
         new System.Numerics.Vector2(inventoryRect.Width, inventoryRect.Height / 2));
         _enabled = true;
         Core.ParallelRunner.Run(new Coroutine(Init(), AutoSextant.Instance, _sellAssistantInitCoroutineName));
+    }
+
+    public static void Disable()
+    {
+        selectedAmount = 1;
+        selectedMod = "";
+        _windowPos = (System.Numerics.Vector2.Zero, System.Numerics.Vector2.Zero);
+        selectedFilter = "";
+        CurrentReport = null;
+        CompassCounts.Clear();
+        StopAllRoutines();
+        WhisperManager.Whispers.Clear();
+        _enabled = false;
     }
 
     public static IEnumerator Init()
@@ -128,8 +161,14 @@ public static class SellAssistant
         Input.KeyUp(Keys.ControlKey);
     }
 
-    public static IEnumerator TakeFromStash()
+    public static IEnumerator TakeFromStash(string mod = null, int? amount = null)
     {
+        yield return Util.ForceFocus();
+
+        mod ??= selectedMod;
+        amount ??= selectedAmount;
+        amount = Math.Min(amount.Value, 60);
+
         yield return Util.ForceFocus();
 
         Input.StorePosition();
@@ -140,14 +179,18 @@ public static class SellAssistant
 
         foreach (var t in tabs)
         {
+            if (items.Count >= amount)
+                break;
             foreach (var i in t.StashElement.VisibleInventoryItems)
             {
+                if (items.Count >= amount)
+                    break;
                 if (i.Item.HasComponent<Mods>())
                 {
                     var mods = i.Item.GetComponent<Mods>();
                     foreach (var m in mods.ItemMods)
                     {
-                        if (m.RawName == selectedMod)
+                        if (m.RawName == mod)
                         {
                             items.Add((t.Name, i.GetClientRect().Center));
                             break;
@@ -157,7 +200,7 @@ public static class SellAssistant
             }
         }
 
-        for (int i = 0; i < Math.Min(selectedAmount, 60); i++)
+        for (int i = 0; i < amount; i++)
         {
             var item = items[i];
             yield return NStash.Stash.SelectTab(item.Item1);
@@ -179,9 +222,16 @@ public static class SellAssistant
             return;
         }
         WhisperManager.Tick();
+
+        if (ExtractionQueue.Count > 0 && Core.ParallelRunner.FindByName(_sellAssistantTakeFromStashCoroutineName) == null)
+        {
+            var (mod, amount) = ExtractionQueue[0];
+            ExtractionQueue.RemoveAt(0);
+            Core.ParallelRunner.Run(new Coroutine(TakeFromStash(mod, amount), AutoSextant.Instance, _sellAssistantTakeFromStashCoroutineName));
+        }
     }
 
-    public static void TakeFromStash(string mod, int amount)
+    public static void SelectAndTakeFromStash(string mod, int amount)
     {
         selectedMod = mod;
         selectedAmount = amount;
@@ -286,12 +336,13 @@ public static class SellAssistant
         float paneWidth2 = ImGui.GetContentRegionAvail().X * 0.65f;
 
         ImGui.BeginChild("Left Pane", new System.Numerics.Vector2(paneWidth1, -1));
-        ImGui.InputText("Filter", ref selectedFilter, 100);
+        ImGui.InputText("Filter", ref selectedFilter, 50);
         ImGui.SameLine();
-        if (ImGui.Button("Clear"))
-        {
+        if (ImGui.Button("C"))
             selectedFilter = "";
-        }
+        ImGui.SameLine();
+        if (ImGui.Button("R"))
+            Enable();
         ImGui.Spacing();
 
         float tableWidth = ImGui.GetContentRegionAvail().X;

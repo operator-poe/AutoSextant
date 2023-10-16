@@ -83,4 +83,14 @@ public static class Util
     public static extern short VkKeyScan(char ch);
 
     public static Keys KeyCodeSlash = (Keys)(int)(byte)(VkKeyScan('/') & 0xFF);
+
+    public static string FormatChaosPrice(float value, float? DivinePrice = null)
+    {
+        if (DivinePrice == null || Math.Abs(value) < DivinePrice)
+            return $"{value.ToString("0.0")}c";
+
+        int divines = (int)(value / DivinePrice);
+        float chaos = value % DivinePrice ?? 0;
+        return $"{divines} div, {chaos.ToString("0.0")}c";
+    }
 }

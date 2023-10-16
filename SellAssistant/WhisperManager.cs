@@ -15,136 +15,13 @@ public enum FullfillmentStatus
     NotAvailable
 }
 
-public class Whisper
-{
-    public string PlayerName { get; set; }
-    public string Message { get; set; }
-
-    public int Quantity { get; set; }
-
-    public string ItemName { get; set; }
-    public string ModName { get; set; }
-
-    public bool Hidden { get; set; } = false;
-
-    public bool InArea { get; set; } = false;
-
-    public bool HasSentInvite { get; set; } = false;
-    public bool HasSentPartial { get; set; } = false;
-    public bool HasExtracted { get; set; } = false;
-    public bool HasTraded { get; set; } = false;
-
-    public FullfillmentStatus Status
-    {
-        get
-        {
-            if (!SellAssistant.CompassCounts.ContainsKey(ModName))
-                return FullfillmentStatus.NotAvailable;
-            if (Quantity > SellAssistant.CompassCounts[ModName])
-                return FullfillmentStatus.NotEnough;
-            return FullfillmentStatus.Available;
-        }
-    }
-
-    public string Price
-    {
-        get
-        {
-            if (SellAssistant.CurrentReport != null)
-            {
-                var priceString = SellAssistant.CurrentReport.AmountToString(ItemName, Quantity);
-                if (priceString != null)
-                    return priceString;
-                else
-                    return "-";
-            }
-            var price = AutoSextant.Instance.CompassList.Prices[ItemName];
-            var mPrice = (float)(price.DivinePrice > 1.0f ? price.DivinePrice : price.ChaosPrice) * Quantity * SellAssistant.priceMultiplier;
-            return price.DivinePrice > 1.0f ? mPrice.ToString("0.0") + "d" : mPrice.ToString("0.0") + "c";
-        }
-    }
-
-    public static Whisper Create(string whisper)
-    {
-        var priceNameList = AutoSextant.Instance.CompassList.PriceToModName.Keys.ToList();
-
-        string username = null;
-        string pattern = "@From (<.*> )?(.*):";
-        Match match = Regex.Match(whisper, pattern, RegexOptions.IgnoreCase);
-        if (match.Success)
-        {
-            username = match.Groups[2].Value;
-        }
-        if (username == null)
-            return null;
-
-        whisper = whisper.Substring(whisper.IndexOf(':') + 1).Trim();
-
-        List<(string, (int, int))> patterns = new List<(string, (int, int))>{
-            (@"wtb ([0-9]+) ([a-z8 -]*)", (1,2)),
-            (@"([0-9]+)x ([a-z8 -]+)", (1,2)),
-            (@"(\b[a-z]+\b(?:\s+\b[a-z]+\b)*) all", (1,2)),
-            (@"([0-9]+) ([a-z8 -]+)", (1,2)),
-            (@"([a-z8 ]+) ([0-9]+)", (2,1))
-        };
-
-        foreach (var (subPattern, (q, i)) in patterns)
-        {
-
-            match = Regex.Match(whisper, subPattern, RegexOptions.IgnoreCase);
-            if (match.Success)
-            {
-                string quantity = match.Groups[q].Value;
-                string item = match.Groups[i].Value.Trim().ToLower();
-
-                string closestMatch = priceNameList.Find(x => x.ToLower() == item);
-                if (closestMatch == null)
-                {
-                    int minDistance = int.MaxValue;
-
-                    foreach (string candidate in priceNameList)
-                    {
-                        int distance = Util.LevenshteinDistance(item.ToLower(), candidate.ToLower());
-                        int subMinDistance = int.MaxValue;
-                        string[] targetWords = candidate.Split(' ');
-                        foreach (var word in targetWords)
-                        {
-                            int ldistance = Util.LevenshteinDistance(item.ToLower(), word.ToLower());
-                            subMinDistance = Math.Min(subMinDistance, ldistance);
-                        }
-
-                        distance = Math.Min(distance, subMinDistance);
-
-                        if (distance < minDistance)
-                        {
-                            minDistance = distance;
-                            closestMatch = candidate;
-                        }
-                    }
-                }
-                var mod = AutoSextant.Instance.CompassList.PriceToModName[closestMatch];
-                if (quantity == "all")
-                    quantity = SellAssistant.CompassCounts[mod].ToString();
-
-                return new Whisper
-                {
-                    PlayerName = username,
-                    Quantity = int.Parse(quantity),
-                    ItemName = closestMatch,
-                    ModName = mod
-                };
-            }
-        }
-        return null;
-    }
-}
-
 public static class WhisperManager
 {
     public static List<Whisper> Whispers = new List<Whisper>();
     // {
     //     Whisper.Create("@From _______test___________________: wtb 10 copy of beast"),
-    // }.Where(x => x != null).Select(x => { x.InArea = true; return x; }).ToList();
+    //     Whisper.Create("@From _____Test_____________: WTB 3 Strongbox Enraged 274c each, 4 Beyond 74c each. Total 3828c (16 div + 100c)"),
+    // }.Where(x => x != null).ToList();//.Select(x => { x.InArea = true; return x; }).ToList();
     public static long LastMessageCount = ChatBox.TotalMessageCount;
 
     private static AutoSextant I
@@ -251,13 +128,30 @@ public static class WhisperManager
                 ImGui.TableNextColumn();
                 ImGui.Text(whisper.PlayerName);
                 ImGui.TableNextColumn();
-                ImGui.Text(whisper.ItemName);
+                whisper.Items.ForEach(x =>
+                {
+                    ImGui.PushID(i.ToString() + x.Name);
+                    if (ImGui.Button("S"))
+                    {
+                        SellAssistant.selectedAmount = x.Quantity;
+                        SellAssistant.selectedMod = x.ModName;
+                    }
+                    ImGui.SameLine();
+                    ImGui.Text(x.Name);
+
+                    ImGui.PopID();
+                });
                 ImGui.TableNextColumn();
-                ImGui.Text(whisper.Quantity.ToString());
+                whisper.Items.ForEach(x => ImGui.Text(x.Quantity.ToString()));
                 ImGui.TableNextColumn();
-                ImGui.Text(whisper.Price);
+                whisper.Items.ForEach(x => ImGui.Text(x.PriceFormatted));
+                if (whisper.MultiItem)
+                {
+                    ImGui.Text("-----------------");
+                    ImGui.Text(whisper.Price);
+                }
                 ImGui.TableNextColumn();
-                var status = whisper.Status;
+                var status = whisper.Item.Status;
 
                 // display red or green or orange
                 if (status == FullfillmentStatus.Available)
@@ -272,8 +166,8 @@ public static class WhisperManager
                 if (
                     !whisper.HasSentInvite &&
                     (
-                        whisper.Status == FullfillmentStatus.Available ||
-                        (whisper.Status == FullfillmentStatus.NotEnough && whisper.HasSentPartial)
+                        whisper.Item.Status == FullfillmentStatus.Available ||
+                        (whisper.Item.Status == FullfillmentStatus.NotEnough && whisper.HasSentPartial)
                     )
                 )
                 {
@@ -283,51 +177,44 @@ public static class WhisperManager
                         whisper.HasSentInvite = true;
                     }
                 }
-                else if (whisper.Status == FullfillmentStatus.NotEnough && !whisper.HasSentPartial)
+                else if (whisper.Item.Status == FullfillmentStatus.NotEnough && !whisper.HasSentPartial)
                 {
                     if (ImGui.Button("Partial"))
                     {
                         if (SellAssistant.CurrentReport != null)
                         {
-                            var priceString = SellAssistant.CurrentReport.AmountToString(whisper.ItemName, SellAssistant.CompassCounts[whisper.ModName]);
+                            var priceString = SellAssistant.CurrentReport.AmountToString(whisper.Item.Name, SellAssistant.CompassCounts[whisper.Item.ModName]);
                             if (priceString != null)
-                                Chat.SendChatMessage($"@{whisper.PlayerName} {SellAssistant.CompassCounts[whisper.ModName]} {whisper.ItemName} left for {priceString}, still want them?");
+                                Chat.SendChatMessage($"@{whisper.PlayerName} {SellAssistant.CompassCounts[whisper.Item.ModName]} {whisper.Item.Name} left for {priceString}, still want them?");
                             else
-                                Chat.SendChatMessage($"@{whisper.PlayerName} I only have {SellAssistant.CompassCounts[whisper.ModName]} {whisper.ItemName} left, still want them?");
+                                Chat.SendChatMessage($"@{whisper.PlayerName} I only have {SellAssistant.CompassCounts[whisper.Item.ModName]} {whisper.Item.Name} left, still want them?");
                         }
                         else
                         {
-                            Chat.SendChatMessage($"@{whisper.PlayerName} I only have {SellAssistant.CompassCounts[whisper.ModName]} {whisper.ItemName} left, still want them?");
+                            Chat.SendChatMessage($"@{whisper.PlayerName} I only have {SellAssistant.CompassCounts[whisper.Item.ModName]} {whisper.Item.Name} left, still want them?");
                         }
                         whisper.HasSentPartial = true;
                     }
                 }
 
-                if (whisper.Status == FullfillmentStatus.NotAvailable)
+                if (whisper.Item.Status == FullfillmentStatus.NotAvailable)
                 {
                     if (ImGui.Button("Sold"))
                     {
-                        Chat.SendChatMessage($"@{whisper.PlayerName} Sorry, {whisper.ItemName} are sold");
+                        Chat.SendChatMessage($"@{whisper.PlayerName} Sorry, {whisper.Item.Name} are sold");
                         whisper.Hidden = true;
                     }
                 }
 
-                if (whisper.Status != FullfillmentStatus.NotAvailable)
+                if (whisper.Item.Status != FullfillmentStatus.NotAvailable)
                 {
-                    GrayButton(whisper.HasExtracted);
-                    if (ImGui.Button("Select"))
+                    GrayButton(SellAssistant.IsAnyRoutineRunning || whisper.HasExtracted);
+                    if (ImGui.Button("Extract"))
                     {
-                        SellAssistant.selectedAmount = Math.Min(Math.Min(whisper.Quantity, SellAssistant.CompassCounts[whisper.ModName]), 60);
-                        SellAssistant.selectedMod = whisper.ModName;
+                        SellAssistant.AddToExtractionQueue(whisper.Items.Select(x => (x.ModName, x.Quantity)).ToList());
+                        whisper.HasExtracted = true;
                     }
-                    // if (ImGui.Button("Extract"))
-                    // {
-                    //     SellAssistant.TakeFromStash(whisper.ModName, whisper.Quantity);
-                    //     SellAssistant.selectedAmount = Math.Min(Math.Min(whisper.Quantity, SellAssistant.CompassCounts[whisper.ModName]), 60);
-                    //     SellAssistant.selectedMod = whisper.ModName;
-                    //     whisper.HasExtracted = true;
-                    // }
-                    GrayButtonEnd(whisper.HasExtracted);
+                    GrayButtonEnd(SellAssistant.IsAnyRoutineRunning || whisper.HasExtracted);
                 }
 
 
