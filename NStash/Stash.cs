@@ -45,7 +45,7 @@ public static class Stash
     }
   }
 
-  public static IEnumerator SelectTab(int index)
+  public static IEnumerator ScrollToTab(int index)
   {
     if (index < 0 || index >= Tabs.Count)
     {
@@ -71,13 +71,52 @@ public static class Stash
       }
       yield return new WaitTime(1);
     }
+    yield return new WaitFunctionTimed(() =>
+         Ex.StashElement.AllInventories[index] != null
+    , false, 500);
     Input.KeyUp(System.Windows.Forms.Keys.ControlKey);
     yield break;
   }
 
+  public static IEnumerator ClickTab(int index)
+  {
+    if (IsTabVisible(index))
+    {
+      yield return Input.ClickElement(Ex.TabButtons[index].GetClientRect().Center);
+      yield return new WaitFunctionTimed(() =>
+           Ex.StashElement.AllInventories[index] != null
+      , false, 500);
+    }
+    else
+    {
+      yield return ScrollToTab(index);
+    }
+  }
+
+  public static bool IsTabVisible(int index)
+  {
+    if (!Ex.StashPanel.IsVisible)
+    {
+      return false;
+    }
+    var tabNode = Ex.TabButtons[index];
+    return Ex.StashPanel.GetClientRect().Intersects(tabNode.GetClientRect());
+  }
+
+  public static IEnumerator SelectTab(int index)
+  {
+    if (IsTabVisible(index))
+    {
+      yield return Input.ClickElement(Ex.TabButtons[index].GetClientRect().Center);
+    }
+    else
+    {
+      yield return ScrollToTab(index);
+    }
+  }
   public static IEnumerator SelectTab(string name)
   {
-    return SelectTab(Tabs.FindIndex(t => t.Name == name));
+    return ScrollToTab(Tabs.FindIndex(t => t.Name == name));
   }
 
   public static int TabIndex(string name)

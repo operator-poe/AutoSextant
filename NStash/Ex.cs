@@ -37,4 +37,20 @@ public static class Ex
             return StashElement.StashTabContainer.TabSwitchBar;
         }
     }
+
+    public static Element StashPanel
+    {
+        get
+        {
+            return StashElement.ViewAllStashPanel;
+        }
+    }
+
+    public static IList<Element> TabButtons
+    {
+        get
+        {
+            return StashElement.TabListButtons;
+        }
+    }
 }
