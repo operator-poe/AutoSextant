@@ -9,19 +9,19 @@ namespace AutoSextant.SellAssistant;
 
 public class PoeStackReport
 {
-    public int DivinePrice { get; set; }
+    public float DivinePrice { get; set; }
     public Dictionary<string, float> Prices { get; set; }
 
     public PoeStackReport(string report)
     {
-        Regex divineRegex = new Regex(@":divine: = (\d+) :chaos:");
+        Regex divineRegex = new Regex(@":divine: = ([\d\.]+) :chaos:");
         Regex lineRegex = new Regex(@"(\d*)x (.*) (\d*\.?\d?)c / each");
 
         Match divineMatch = divineRegex.Match(report);
         if (divineMatch.Success)
         {
-            // use int.Tryparse to convert string to int
-            var result = int.TryParse(divineMatch.Groups[1].Value, out int divinePrice);
+            bool result = float.TryParse(divineMatch.Groups[1].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out float divinePrice);
+            Log.Debug($"Divine Price: {divinePrice.ToString("0.0")}");
             if (result)
                 DivinePrice = divinePrice;
             else

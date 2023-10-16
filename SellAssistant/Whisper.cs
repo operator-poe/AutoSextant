@@ -47,6 +47,15 @@ public class WhisperItem
 }
 public class Whisper
 {
+    public static readonly List<(string, (int, int))> WhisperPatterns = new List<(string, (int, int))>{
+            (@"wtb(?: ?([0-9]+) ([\w\s-]+) ([\d\.]+[a-z]*)(?: each)?,?)+", (1,2)), // official poestack whisper
+            (@"wtb +([a-z8 -]*) +x?([0-9]+)x?",(2,1)),
+            (@"([0-9]+)x ([a-z8 -]+)", (1,2)),
+            (@"(\b[a-z]+\b(?:\s+\b[a-z]+\b)*) all", (1,2)),
+            (@"([0-9]+) ([a-z8 -]+)", (1,2)),
+            (@"([a-z8 ]+) ([0-9]+)", (2,1))
+        };
+
     public string PlayerName { get; set; }
     public string Message { get; set; }
 
@@ -76,15 +85,21 @@ public class Whisper
     public bool HasExtracted { get; set; } = false;
     public bool HasTraded { get; set; } = false;
 
+    public float TotalPrice
+    {
+        get
+        {
+            return Items.Sum(x => x.Price);
+        }
+    }
     public string Price
     {
         get
         {
-            var price = Items.Sum(x => x.Price);
             if (SellAssistant.CurrentReport != null)
-                return Util.FormatChaosPrice(price, SellAssistant.CurrentReport.DivinePrice);
+                return Util.FormatChaosPrice(TotalPrice, SellAssistant.CurrentReport.DivinePrice);
             else
-                return Util.FormatChaosPrice(price);
+                return Util.FormatChaosPrice(TotalPrice);
         }
     }
 
@@ -104,18 +119,9 @@ public class Whisper
 
         whisper = whisper.Substring(whisper.IndexOf(':') + 1).Trim();
 
-        List<(string, (int, int))> patterns = new List<(string, (int, int))>{
-            (@"wtb(?: ?([0-9]+) ([\w\s-]+) ([\d\.]+[a-z]*)(?: each)?,?)+", (1,2)), // official poestack whisper
-            (@"wtb +([a-z8 -]*) +x?([0-9]+)x?",(2,1)),
-            (@"([0-9]+)x ([a-z8 -]+)", (1,2)),
-            (@"(\b[a-z]+\b(?:\s+\b[a-z]+\b)*) all", (1,2)),
-            (@"([0-9]+) ([a-z8 -]+)", (1,2)),
-            (@"([a-z8 ]+) ([0-9]+)", (2,1))
-        };
 
-        foreach (var (subPattern, (q, i)) in patterns)
+        foreach (var (subPattern, (q, i)) in WhisperPatterns)
         {
-
             match = Regex.Match(whisper, subPattern, RegexOptions.IgnoreCase);
             if (match.Success)
             {

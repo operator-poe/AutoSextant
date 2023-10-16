@@ -17,47 +17,18 @@ public enum FullfillmentStatus
 
 public static class WhisperManager
 {
-    public static List<Whisper> Whispers = new List<Whisper>
-    {
-        Whisper.Create("@From _______test___________________: wtb 10 copy of beast"),
-        Whisper.Create("@From _____Test_____________: WTB 3 Strongbox Enraged 274c each, 4 Beyond 74c each. Total 3828c (16 div + 100c)"),
-    }.Where(x => x != null).ToList();//.Select(x => { x.InArea = true; return x; }).ToList();
-    public static long LastMessageCount = ChatBox.TotalMessageCount;
+    public static List<Whisper> Whispers = Chat.GetPastMessages("@From", Whisper.WhisperPatterns.Select(x => new Regex(x.Item1)).ToList(), 3).Select(Whisper.Create).Where(x => x != null).ToList();
+    // public static List<Whisper> Whispers = new List<Whisper>
+    // {
+    //     Whisper.Create("@From _______test___________________: wtb 10 copy of beast"),
+    //     Whisper.Create("@From _____Test_____________: WTB 3 Strongbox Enraged 274c each, 4 Beyond 74c each. Total 3828c (16 div + 100c)"),
+    // }.Where(x => x != null).ToList();//.Select(x => { x.InArea = true; return x; }).ToList();
 
-    private static AutoSextant I
-    {
-        get
-        {
-            return AutoSextant.Instance;
-        }
-    }
-
-    private static PoeChatElement ChatBox
-    {
-        get
-        {
-            return AutoSextant.Instance.GameController.Game.IngameState.IngameUi.ChatBox;
-        }
-    }
-
+    private static string chatPointer = Chat.GetPointer();
     public static void Tick()
     {
-        if (ChatBox == null)
+        foreach (var message in Chat.NewMessages(chatPointer))
         {
-            return;
-        }
-        if (ChatBox.TotalMessageCount == LastMessageCount)
-        {
-            return;
-        }
-        var diff = ChatBox.TotalMessageCount - LastMessageCount;
-        LastMessageCount = ChatBox.TotalMessageCount;
-
-
-        for (long i = ChatBox.TotalMessageCount - diff; i < ChatBox.TotalMessageCount; i++)
-        {
-            var message = ChatBox.Messages[(int)i];
-
             if (message.StartsWith("@From"))
             {
                 var whisper = Whisper.Create(message);
@@ -173,7 +144,7 @@ public static class WhisperManager
                 {
                     if (ImGui.Button("Invite"))
                     {
-                        Chat.SendChatMessage("/invite " + whisper.PlayerName);
+                        Chat.QueueMessage("/invite " + whisper.PlayerName);
                         whisper.HasSentInvite = true;
                     }
                 }
@@ -185,13 +156,13 @@ public static class WhisperManager
                         {
                             var priceString = SellAssistant.CurrentReport.AmountToString(whisper.Item.Name, SellAssistant.CompassCounts[whisper.Item.ModName]);
                             if (priceString != null)
-                                Chat.SendChatMessage($"@{whisper.PlayerName} {SellAssistant.CompassCounts[whisper.Item.ModName]} {whisper.Item.Name} left for {priceString}, still want them?");
+                                Chat.QueueMessage($"@{whisper.PlayerName} {SellAssistant.CompassCounts[whisper.Item.ModName]} {whisper.Item.Name} left for {priceString}, still interested?");
                             else
-                                Chat.SendChatMessage($"@{whisper.PlayerName} I only have {SellAssistant.CompassCounts[whisper.Item.ModName]} {whisper.Item.Name} left, still want them?");
+                                Chat.QueueMessage($"@{whisper.PlayerName} I only have {SellAssistant.CompassCounts[whisper.Item.ModName]} {whisper.Item.Name} left, still interested?");
                         }
                         else
                         {
-                            Chat.SendChatMessage($"@{whisper.PlayerName} I only have {SellAssistant.CompassCounts[whisper.Item.ModName]} {whisper.Item.Name} left, still want them?");
+                            Chat.QueueMessage($"@{whisper.PlayerName} I only have {SellAssistant.CompassCounts[whisper.Item.ModName]} {whisper.Item.Name} left, still interested?");
                         }
                         whisper.HasSentPartial = true;
                     }
@@ -201,7 +172,7 @@ public static class WhisperManager
                 {
                     if (ImGui.Button("Sold"))
                     {
-                        Chat.SendChatMessage($"@{whisper.PlayerName} Sorry, {whisper.Item.Name} are sold");
+                        Chat.QueueMessage($"@{whisper.PlayerName} Sorry, all my \"{whisper.Item.Name}\" are sold");
                         whisper.Hidden = true;
                     }
                 }
@@ -221,14 +192,23 @@ public static class WhisperManager
                 GrayButton(whisper.HasTraded);
                 if (ImGui.Button("Trade"))
                 {
-                    Chat.SendChatMessage("/tradewith " + whisper.PlayerName);
+                    Chat.QueueMessage("/tradewith " + whisper.PlayerName);
+                    whisper.HasTraded = true;
+                }
+                if (ImGui.Button("Trade NEW"))
+                {
+                    TradeManager.AddTradeRequest(new TradeRequest
+                    {
+                        PlayerName = whisper.PlayerName,
+                        ExpectedValue = whisper.TotalPrice,
+                    });
                     whisper.HasTraded = true;
                 }
                 GrayButtonEnd(whisper.HasTraded);
 
                 if (ImGui.Button("Kick"))
                 {
-                    Chat.SendChatMessage(new string[] {
+                    Chat.QueueMessage(new string[] {
                             "/kick " + whisper.PlayerName,
                             $"@{whisper.PlayerName} ty"
                         });

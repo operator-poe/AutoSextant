@@ -110,6 +110,7 @@ public class AutoSextantSettings : ISettings
     public RangeNode<int> ExtraDelay { get; set; }
 
     public HotkeyNode RestockHotkey { get; set; } = new HotkeyNode(System.Windows.Forms.Keys.F7);
+    public HotkeyNode CancelHotKey { get; set; } = new HotkeyNode(System.Windows.Forms.Keys.Delete);
     public HotkeyNode DumpHotkey { get; set; } = new HotkeyNode(System.Windows.Forms.Keys.F8);
     public HotkeyNode RunHotkey { get; set; } = new HotkeyNode(System.Windows.Forms.Keys.F9);
     public HotkeyNode AtlasHotKey { get; set; } = new HotkeyNode(System.Windows.Forms.Keys.G);

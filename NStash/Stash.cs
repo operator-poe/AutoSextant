@@ -47,15 +47,6 @@ public static class Stash
 
   public static IEnumerator ScrollToTab(int index)
   {
-    if (index < 0 || index >= Tabs.Count)
-    {
-      throw new ArgumentOutOfRangeException();
-    }
-    if (index == Ex.StashElement.IndexVisibleStash)
-    {
-      yield break;
-    }
-
     Input.SetCursorPos(Ex.TabSwitchBar.GetClientRect().Center);
     yield return new WaitTime(10);
     Input.KeyDown(System.Windows.Forms.Keys.ControlKey);
@@ -105,6 +96,14 @@ public static class Stash
 
   public static IEnumerator SelectTab(int index)
   {
+    if (index < 0 || index >= Tabs.Count)
+    {
+      throw new ArgumentOutOfRangeException();
+    }
+    if (index == Ex.StashElement.IndexVisibleStash)
+    {
+      yield break;
+    }
     if (IsTabVisible(index))
     {
       yield return Input.ClickElement(Ex.TabButtons[index].GetClientRect().Center);

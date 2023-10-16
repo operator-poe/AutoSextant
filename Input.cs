@@ -58,4 +58,28 @@ public class Input : ExileCore.Input
     Input.SetCursorPos(LastMousePosition);
     LastMousePosition = Vector2.Zero;
   }
+
+  public static void HoldCtrl()
+  {
+    Log.Debug("Holding Ctrl");
+    KeyDown(Keys.ControlKey);
+  }
+
+  public static void ReleaseCtrl()
+  {
+    Log.Debug("Releasing Ctrl");
+    KeyUp(Keys.ControlKey);
+  }
+
+  public static void HoldShift()
+  {
+    Log.Debug("Holding Shift");
+    KeyDown(Keys.ShiftKey);
+  }
+
+  public static void ReleaseShift()
+  {
+    Log.Debug("Releasing Shift");
+    KeyUp(Keys.ShiftKey);
+  }
 }

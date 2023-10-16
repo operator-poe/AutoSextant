@@ -42,6 +42,7 @@ public static class SellAssistant
             return
                 ExtractionQueue.Count > 0 ||
                 Chat.IsAnyRoutineRunning ||
+                TradeManager.IsAnyRoutineRunning ||
                 Core.ParallelRunner.FindByName(_sellAssistantInitCoroutineName) != null ||
                 Core.ParallelRunner.FindByName(_sellAssistantTakeFromStashCoroutineName) != null;
         }
@@ -52,6 +53,7 @@ public static class SellAssistant
         Core.ParallelRunner.FindByName(_sellAssistantInitCoroutineName)?.Done();
         Core.ParallelRunner.FindByName(_sellAssistantTakeFromStashCoroutineName)?.Done();
         Chat.StopAllRoutines();
+        TradeManager.StopAllRoutines();
     }
 
     public static void AddToExtractionQueue(string mod, int amount)
@@ -225,6 +227,7 @@ public static class SellAssistant
         }
         WhisperManager.Tick();
         Chat.Tick();
+        TradeManager.Tick();
 
         if (ExtractionQueue.Count > 0 && Core.ParallelRunner.FindByName(_sellAssistantTakeFromStashCoroutineName) == null)
         {
@@ -247,6 +250,7 @@ public static class SellAssistant
         {
             return;
         }
+        TradeManager.Render();
         var show = _enabled;
 
         ImGui.SetNextWindowPos(_windowPos.Item1);
@@ -254,6 +258,16 @@ public static class SellAssistant
 
         ImGui.Begin("AutoSextant SellAssistant", ref show);
         _enabled = show;
+
+        // test trademanager transfer items
+        if (ImGui.Button("Transfer Items"))
+        {
+            TradeManager.AddTradeRequest(new TradeRequest()
+            {
+                PlayerName = "test",
+                Status = TradeRequestStatus.RequestAccepted,
+            });
+        }
 
 
         ImGui.BeginChild("Top Pane", new System.Numerics.Vector2(-1, 120));

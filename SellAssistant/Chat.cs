@@ -3,6 +3,8 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Data;
 using System.Linq;
+using System.Security;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using ExileCore;
@@ -10,8 +12,15 @@ using ExileCore.PoEMemory.Elements;
 using ExileCore.Shared;
 
 namespace AutoSextant.SellAssistant;
+
+public class ChatPointer
+{
+    public string Pointer { get; set; }
+    public int Index { get; set; }
+}
 public static class Chat
 {
+    private static Dictionary<string, ChatPointer> _pointers = new Dictionary<string, ChatPointer>();
     public static ChatPanel Panel
     {
         get
@@ -36,10 +45,107 @@ public static class Chat
         }
     }
 
+    private static IList<string> ChatMessages
+    {
+        get
+        {
+            return AutoSextant.Instance.GameController.Game.IngameState.IngameUi.ChatMessages;
+        }
+    }
+
+    public static string GetPointer()
+    {
+        var pointerId = Guid.NewGuid().ToString();
+        var pointer = (ChatMessages.Count == 0) ? new ChatPointer
+        {
+            Pointer = null,
+            Index = -1
+        } : new ChatPointer
+        {
+            Pointer = ChatMessages[^1],
+            Index = ChatMessages.Count - 1
+        };
+        _pointers.Add(pointerId, pointer);
+        return pointerId;
+    }
+
+    public static void RemovePointer(string pointerId)
+    {
+        if (_pointers.ContainsKey(pointerId))
+            _pointers.Remove(pointerId);
+    }
+
+    public static void UpdatePointer(string pointerId)
+    {
+        if (!_pointers.ContainsKey(pointerId))
+            return;
+        if (ChatMessages.Count == 0)
+            return;
+        var pointer = _pointers[pointerId];
+        pointer.Index = ChatMessages.Count - 1;
+        pointer.Pointer = ChatMessages[^1];
+    }
+
+    public static List<string> NewMessages(string pointerId, bool updatePointer = true)
+    {
+        if (!_pointers.ContainsKey(pointerId))
+            return null;
+        var pointer = _pointers[pointerId];
+        if (ChatMessages.Count == 0)
+            return new List<string>();
+
+        var index = pointer.Index;
+        if (ChatMessages.Count < pointer.Index + 1 || ChatMessages[pointer.Index] != pointer.Pointer)
+        {
+            // Messages have been deleted, so we can't find the pointer
+            // Go from the top backwards until we find the pointer
+            for (int i = ChatMessages.Count - 1; i >= 0; i--)
+            {
+                if (ChatMessages[i] == pointer.Pointer)
+                {
+                    index = ChatMessages.Count - 1 - i;
+                    break;
+                }
+            }
+
+        }
+        if (updatePointer)
+        {
+            pointer.Index = ChatMessages.Count - 1;
+            pointer.Pointer = ChatMessages[^1];
+        }
+        return ChatMessages.Skip(index + 1).ToList();
+    }
+
+    public static bool CheckNewMessages(string pointerId, string search)
+    {
+        if (pointerId == null || !_pointers.ContainsKey(pointerId))
+            return false;
+        var messages = NewMessages(pointerId);
+        return messages.Any(x => x.Contains(search));
+    }
+
+    public static List<string> GetPastMessages(string search, int count = -1)
+    {
+        var messages = ChatMessages.Where(x => x.Contains(search)).ToList();
+        if (count != -1)
+            messages = messages.TakeLast(count).ToList();
+        return messages;
+    }
+
+    public static List<string> GetPastMessages(string search, List<Regex> regex, int count = -1)
+    {
+        var messages = ChatMessages.Where(x => (search == "" || x.Contains(search)) && x.Contains(search) && regex.Any(y => y.IsMatch(x))).ToList();
+        if (count != -1)
+            messages = messages.TakeLast(count).ToList();
+        return messages;
+    }
+
     private static List<string> MessageQueue = new List<string>();
 
     public static void QueueMessage(string message)
     {
+        Log.Debug($"Queuing message: {message}");
         MessageQueue.Add(message);
     }
 
@@ -52,9 +158,7 @@ public static class Chat
     {
         get
         {
-            return
-                MessageQueue.Count > 0 ||
-                Core.ParallelRunner.FindByName(_sendChatCoroutineName) != null;
+            return Core.ParallelRunner.FindByName(_sendChatCoroutineName) != null;
         }
     }
     public static void StopAllRoutines()

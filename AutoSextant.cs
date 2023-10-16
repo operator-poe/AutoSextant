@@ -35,8 +35,9 @@ public class AutoSextant : BaseSettingsPlugin<AutoSextantSettings>
         Settings.DumpHotkey.OnValueChanged += () => { Input.RegisterKey(Settings.RestockHotkey); };
         Input.RegisterKey(Settings.RunHotkey);
         Settings.RunHotkey.OnValueChanged += () => { Input.RegisterKey(Settings.RestockHotkey); };
+        Input.RegisterKey(Settings.CancelHotKey);
+        Settings.RunHotkey.OnValueChanged += () => { Input.RegisterKey(Settings.CancelHotKey); };
 
-        SellAssistant.SellAssistant.Enable();
 
         var priceFetcher = new PoEStack.PriceFetcher();
         var task = priceFetcher.Load();
@@ -64,9 +65,10 @@ public class AutoSextant : BaseSettingsPlugin<AutoSextantSettings>
         //Perform once-per-zone processing here
         //For example, Radar builds the zone map texture here
 
+        // SellAssistant.SellAssistant.Enable();
         if (SellAssistant.SellAssistant.Enabled)
         {
-            // SellAssistant.SellAssistant.Disable();
+            SellAssistant.SellAssistant.Disable();
         }
     }
 
@@ -87,19 +89,24 @@ public class AutoSextant : BaseSettingsPlugin<AutoSextantSettings>
 
     public void StopAllRoutines()
     {
+        SellAssistant.SellAssistant.StopAllRoutines();
         var routine = Core.ParallelRunner.FindByName(_restockCoroutineName);
         routine?.Done();
         routine = Core.ParallelRunner.FindByName(_dumpCoroutineName);
         routine?.Done();
         routine = Core.ParallelRunner.FindByName(_runCoroutineName);
         routine?.Done();
-        Input.KeyUp(System.Windows.Forms.Keys.ShiftKey);
-        Input.KeyUp(System.Windows.Forms.Keys.ControlKey);
-        SellAssistant.SellAssistant.StopAllRoutines();
+        Input.ReleaseCtrl();
+        Input.ReleaseShift();
     }
 
     public override Job Tick()
     {
+        if (Settings.CancelHotKey.PressedOnce())
+        {
+            StopAllRoutines();
+            return null;
+        }
         if (Settings.RestockHotkey.PressedOnce())
         {
             SellAssistant.SellAssistant.Enable();
