@@ -30,7 +30,7 @@ public class WhisperItem
             if (SellAssistant.CurrentReport != null && SellAssistant.CurrentReport.Prices.TryGetValue(Name, out var price))
                 return price * Quantity;
             else
-                return AutoSextant.Instance.CompassList.Prices[Name].ChaosPrice * Quantity;
+                return CompassList.Prices[Name].ChaosPrice * Quantity;
         }
     }
 
@@ -90,7 +90,7 @@ public class Whisper
 
     public static Whisper Create(string whisper)
     {
-        var priceNameList = AutoSextant.Instance.CompassList.PriceToModName.Keys.ToList();
+        var priceNameList = CompassList.PriceToModName.Keys.ToList();
 
         string username = null;
         string pattern = "@From (<.*> )?(.*):";
@@ -151,7 +151,7 @@ public class Whisper
                             }
                         }
                     }
-                    var mod = AutoSextant.Instance.CompassList.PriceToModName[closestMatch];
+                    var mod = CompassList.PriceToModName[closestMatch];
                     if (quantity == "all")
                         quantity = SellAssistant.CompassCounts[mod].ToString();
 

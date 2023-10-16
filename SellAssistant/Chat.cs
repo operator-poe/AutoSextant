@@ -36,6 +36,43 @@ public static class Chat
         }
     }
 
+    private static List<string> MessageQueue = new List<string>();
+
+    public static void QueueMessage(string message)
+    {
+        MessageQueue.Add(message);
+    }
+
+    public static void QueueMessage(string[] messages)
+    {
+        MessageQueue.AddRange(messages);
+    }
+
+    public static bool IsAnyRoutineRunning
+    {
+        get
+        {
+            return
+                MessageQueue.Count > 0 ||
+                Core.ParallelRunner.FindByName(_sendChatCoroutineName) != null;
+        }
+    }
+    public static void StopAllRoutines()
+    {
+        MessageQueue.Clear();
+        Core.ParallelRunner.FindByName(_sendChatCoroutineName)?.Done();
+    }
+
+    public static void Tick()
+    {
+        if (MessageQueue.Count > 0 && Core.ParallelRunner.FindByName(_sendChatCoroutineName) == null)
+        {
+            string message = MessageQueue[0];
+            MessageQueue.RemoveAt(0);
+            SendChatMessage(message);
+        }
+    }
+
     private static readonly string _sendChatCoroutineName = "AutoSextant.SendChatMessage";
     public static void SendChatMessage(string message)
     {

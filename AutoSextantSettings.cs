@@ -1,7 +1,11 @@
-﻿using System.Linq;
+﻿using System.Collections.Generic;
+using System.Linq;
+using System.Numerics;
+using System.Text.Json.Serialization;
 using ExileCore.Shared.Attributes;
 using ExileCore.Shared.Interfaces;
 using ExileCore.Shared.Nodes;
+using ImGuiNET;
 
 namespace AutoSextant;
 
@@ -15,9 +19,91 @@ public class AutoSextantSettings : ISettings
     //nested menu support and even custom callbacks are supported.
     //If you want to override DrawSettings instead, you better have a very good reason.
 
+    [JsonIgnore]
+    public CustomNode ModSettingsNode { get; set; }
+
     public AutoSextantSettings()
     {
         ExtraDelay = new RangeNode<int>(0, 0, 2000);
+
+        // ModSettingsNode = new CustomNode
+        // {
+        //     DrawDelegate = () =>
+        //     {
+        // var modNames = new List<string>(CompassList.PriceToModName.Keys);
+        // var modNames = new List<string>();
+
+        // if (ImGui.BeginTable("AutoSextantSettingsTable", 5, ImGuiTableFlags.Borders | ImGuiTableFlags.RowBg))
+        // {
+        //     ImGui.TableSetupColumn("Name");
+        //     ImGui.TableSetupColumn("Always Skip");
+        //     ImGui.TableSetupColumn("Always Take");
+        //     ImGui.TableSetupColumn("Cap");
+        //     ImGui.TableSetupColumn("Price");
+        //     ImGui.TableHeadersRow();
+
+        // foreach (var modName in modNames)
+        // {
+        //     ImGui.TableNextRow();
+        //     ImGui.TableNextColumn();
+        //     ImGui.Text(modName);
+
+        //     ImGui.TableNextColumn();
+        // var index = ModSettings.FindIndex(x => x.Item1 == modName);
+        // var (_, never, always, cap) = index != -1 ? ModSettings[index] : (modName, false, false, 0);
+        // if (ImGui.Checkbox($"##{modName}Never", ref never))
+        // {
+        //     if (index != -1)
+        //         ModSettings[index] = (modName, never, always, cap);
+        //     else
+        //         ModSettings.Add((modName, never, always, cap));
+        // }
+
+        // ImGui.TableNextColumn();
+        // if (ImGui.Checkbox($"##{modName}Always", ref always))
+        // {
+        //     if (index != -1)
+        //         ModSettings[index] = (modName, never, always, cap);
+        //     else
+        //         ModSettings.Add((modName, never, always, cap));
+        // }
+        // ImGui.TableNextColumn();
+        // if (ImGui.DragInt($"##{modName}Cap", ref cap, 1, 0, 100))
+        // {
+        //     if (index != -1)
+        //         ModSettings[index] = (modName, never, always, cap);
+        //     else
+        //         ModSettings.Add((modName, never, always, cap));
+        // }
+
+        // ImGui.TableNextColumn();
+        // if (CompassList.Prices != null)
+        // {
+        //     var p = CompassList.Prices.TryGetValue(modName, out var price) ? price.ChaosPrice : 0;
+
+        //     if (p >= MinChaosValue.Value)
+        //     {
+        //         ImGui.PushStyleColor(ImGuiCol.Text, new Vector4(0, 1, 0, 1));
+        //         ImGui.Text(p.ToString("0.0") + "c");
+        //         ImGui.PopStyleColor();
+        //     }
+        //     else
+        //     {
+        //         ImGui.PushStyleColor(ImGuiCol.Text, new Vector4(1, 0, 0, 1));
+        //         ImGui.Text(p.ToString("0.0") + "c");
+        //         ImGui.PopStyleColor();
+        //     }
+        // }
+        // else
+        // {
+        //     ImGui.Text("-");
+        // }
+        // }
+
+        //     ImGui.EndTable();
+        // }
+        //     }
+        // };
     }
 
     [Menu("Extra Delay", "Delay to wait after each inventory clearing attempt(in ms).")]
@@ -39,4 +125,6 @@ public class AutoSextantSettings : ISettings
 
     public TextNode DumpTabs { get; set; } = new TextNode("CHARGED1,CHARGED2");
     public ToggleNode PositionDebug { get; set; } = new ToggleNode(false);
+
+    public List<(string, bool, bool, int)> ModSettings { get; set; } = new List<(string, bool, bool, int)>(); // (Name, Never, Always, Cap)
 }

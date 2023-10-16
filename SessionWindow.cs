@@ -91,7 +91,7 @@ public static class SessionWindow
           ImGui.Text(FormatChaosPrice(totalSpent));
 
           ImGui.TableNextColumn();
-          var totalChaos = _modCount.Sum(x => AutoSextant.Instance.CompassList.Prices[x.Key].ChaosPrice * x.Value);
+          var totalChaos = _modCount.Sum(x => CompassList.Prices[x.Key].ChaosPrice * x.Value);
           ImGui.Text(FormatChaosPrice(totalChaos));
 
           ImGui.TableNextColumn();
@@ -121,7 +121,7 @@ public static class SessionWindow
           ImGui.TableSetupColumn("Profit Total");
           ImGui.TableHeadersRow();
 
-          var modsOrdered = _modCount.Select(x => (x.Key, x.Value, AutoSextant.Instance.CompassList.Prices[x.Key].ChaosPrice * x.Value)).OrderByDescending(x => x.Item3).ToList();
+          var modsOrdered = _modCount.Select(x => (x.Key, x.Value, CompassList.Prices[x.Key].ChaosPrice * x.Value)).OrderByDescending(x => x.Item3).ToList();
 
           foreach (var mod in modsOrdered)
           {
@@ -129,7 +129,7 @@ public static class SessionWindow
             ImGui.TableNextColumn();
             ImGui.Text(mod.Item1);
             ImGui.TableNextColumn();
-            ImGui.Text(FormatChaosPrice(AutoSextant.Instance.CompassList.Prices[mod.Item1].ChaosPrice));
+            ImGui.Text(FormatChaosPrice(CompassList.Prices[mod.Item1].ChaosPrice));
             ImGui.TableNextColumn();
             ImGui.Text(mod.Item2.ToString());
             ImGui.TableNextColumn();

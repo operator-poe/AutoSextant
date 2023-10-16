@@ -82,9 +82,9 @@ public class VoidStone
         return null;
       if (name.Contains("Barrel"))
         return "Barrel";
-      if (!Instance.CompassList.ModNameToPrice.ContainsKey(name))
+      if (!CompassList.ModNameToPrice.ContainsKey(name))
         return null;
-      return Instance.CompassList.ModNameToPrice.GetValueOrDefault(name, null);
+      return CompassList.ModNameToPrice.GetValueOrDefault(name, null);
     }
   }
 
@@ -105,17 +105,17 @@ public class VoidStone
           ChaosPrice = 0
         };
       }
-      if (!Instance.CompassList.ModNameToPrice.ContainsKey(name))
+      if (!CompassList.ModNameToPrice.ContainsKey(name))
       {
         return null;
       }
-      var compassName = Instance.CompassList.ModNameToPrice.GetValueOrDefault(name, null);
-      if (!Instance.CompassList.Prices.ContainsKey(compassName))
+      var compassName = CompassList.ModNameToPrice.GetValueOrDefault(name, null);
+      if (!CompassList.Prices.ContainsKey(compassName))
       {
         Error.AddAndShow("FATAL", $"No price found for {compassName}");
         return null;
       }
-      var compassPrice = Instance.CompassList.Prices.GetValueOrDefault(compassName, null);
+      var compassPrice = CompassList.Prices.GetValueOrDefault(compassName, null);
       return compassPrice;
     }
   }

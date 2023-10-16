@@ -40,7 +40,7 @@ public class PoeStackReport
             // string quantity = match.Groups[1].Value;
             string itemName = match.Groups[2].Value;
 
-            if (!AutoSextant.Instance.CompassList.PriceToModName.ContainsKey(itemName))
+            if (!CompassList.PriceToModName.ContainsKey(itemName))
                 throw new Exception($"Invalid PoE Stack Report: {itemName} not found in Compass List");
             bool result = float.TryParse(match.Groups[3].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out float price);
             if (!result)

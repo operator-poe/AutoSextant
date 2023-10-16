@@ -41,6 +41,7 @@ public static class SellAssistant
         {
             return
                 ExtractionQueue.Count > 0 ||
+                Chat.IsAnyRoutineRunning ||
                 Core.ParallelRunner.FindByName(_sellAssistantInitCoroutineName) != null ||
                 Core.ParallelRunner.FindByName(_sellAssistantTakeFromStashCoroutineName) != null;
         }
@@ -50,6 +51,7 @@ public static class SellAssistant
         ExtractionQueue.Clear();
         Core.ParallelRunner.FindByName(_sellAssistantInitCoroutineName)?.Done();
         Core.ParallelRunner.FindByName(_sellAssistantTakeFromStashCoroutineName)?.Done();
+        Chat.StopAllRoutines();
     }
 
     public static void AddToExtractionQueue(string mod, int amount)
@@ -122,7 +124,7 @@ public static class SellAssistant
                     var mods = i.Item.GetComponent<Mods>();
                     foreach (var m in mods.ItemMods)
                     {
-                        if (I.CompassList.ModNameToPrice.ContainsKey(m.RawName))
+                        if (CompassList.ModNameToPrice.ContainsKey(m.RawName))
                         {
                             if (!CompassCounts.ContainsKey(m.RawName))
                                 CompassCounts.Add(m.RawName, 0);
@@ -145,7 +147,7 @@ public static class SellAssistant
 
     public static IEnumerator Highlight()
     {
-        var tft = I.CompassList.ModNameToPrice[selectedMod];
+        var tft = CompassList.ModNameToPrice[selectedMod];
         yield return Util.ForceFocus();
         Util.SetClipBoardText(tft);
         yield return new WaitFunctionTimed(() => Util.GetClipboardText() == tft, true, 1000, "Clipboard text not set");
@@ -222,6 +224,7 @@ public static class SellAssistant
             return;
         }
         WhisperManager.Tick();
+        Chat.Tick();
 
         if (ExtractionQueue.Count > 0 && Core.ParallelRunner.FindByName(_sellAssistantTakeFromStashCoroutineName) == null)
         {
@@ -298,17 +301,17 @@ public static class SellAssistant
         ImGui.Spacing();
         if (selectedMod != "")
         {
-            ImGui.Text(I.CompassList.ModNameToPrice[selectedMod]);
+            ImGui.Text(CompassList.ModNameToPrice[selectedMod]);
             ImGui.SameLine();
 
             if (CurrentReport != null)
             {
-                var priceString = CurrentReport.AmountToString(I.CompassList.ModNameToPrice[selectedMod], selectedAmount);
+                var priceString = CurrentReport.AmountToString(CompassList.ModNameToPrice[selectedMod], selectedAmount);
                 ImGui.Text($" | {priceString}");
             }
             else
             {
-                var price = I.CompassList.Prices[I.CompassList.ModNameToPrice[selectedMod]];
+                var price = CompassList.Prices[CompassList.ModNameToPrice[selectedMod]];
                 var mPrice = (float)(price.DivinePrice > 1.0f ? price.DivinePrice : price.ChaosPrice) * selectedAmount * priceMultiplier;
                 var priceString = price.DivinePrice > 1.0f ? mPrice.ToString("0.0") + " Divine" : mPrice.ToString("0.0") + " Chaos";
                 ImGui.Text($" | {priceString}");
@@ -354,7 +357,7 @@ public static class SellAssistant
             ImGui.TableSetupColumn("Total Value", ImGuiTableColumnFlags.WidthFixed, tableWidth * 0.3f);
             ImGui.TableHeadersRow();
 
-            foreach (var c in AutoSextant.Instance.CompassList.PriceToModName)
+            foreach (var c in CompassList.PriceToModName)
             {
                 var tft = c.Key;
                 ImGui.PushID(tft);
@@ -389,7 +392,7 @@ public static class SellAssistant
                 }
                 else
                 {
-                    var price = I.CompassList.Prices[tft];
+                    var price = CompassList.Prices[tft];
                     var mPrice = (float)(price.DivinePrice > 1.0f ? price.DivinePrice : price.ChaosPrice) * CompassCounts[mod] * priceMultiplier;
                     var priceString = price.DivinePrice > 1.0f ? mPrice.ToString("0.0") + "d" : mPrice.ToString("0.0") + "c";
                     ImGui.Text(priceString);

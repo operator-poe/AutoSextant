@@ -20,7 +20,6 @@ public class AutoSextant : BaseSettingsPlugin<AutoSextantSettings>
 {
     internal static AutoSextant Instance;
 
-    public CompassList CompassList = new CompassList();
     public Dictionary<string, PoEStack.PoeStackPrice> Prices { get; set; } = new Dictionary<string, PoEStack.PoeStackPrice>();
 
     public override bool Initialise()
@@ -37,7 +36,7 @@ public class AutoSextant : BaseSettingsPlugin<AutoSextantSettings>
         Input.RegisterKey(Settings.RunHotkey);
         Settings.RunHotkey.OnValueChanged += () => { Input.RegisterKey(Settings.RestockHotkey); };
 
-        // SellAssistant.SellAssistant.Enable();
+        SellAssistant.SellAssistant.Enable();
 
         var priceFetcher = new PoEStack.PriceFetcher();
         var task = priceFetcher.Load();
@@ -67,7 +66,7 @@ public class AutoSextant : BaseSettingsPlugin<AutoSextantSettings>
 
         if (SellAssistant.SellAssistant.Enabled)
         {
-            SellAssistant.SellAssistant.Disable();
+            // SellAssistant.SellAssistant.Disable();
         }
     }
 
@@ -198,7 +197,10 @@ public class AutoSextant : BaseSettingsPlugin<AutoSextantSettings>
 
             compassPrice = stone.Price;
 
-            if (stone.Price != null && compassPrice.ChaosPrice >= Settings.MinChaosValue)
+            var index = Settings.ModSettings.FindIndex(x => x.Item1 == compassPrice.Name);
+            var (_, never, always, cap) = index != -1 ? Settings.ModSettings[index] : (compassPrice.Name, false, false, 0);
+
+            if ((!never && stone.Price != null && compassPrice.ChaosPrice >= Settings.MinChaosValue) || always)
             {
                 holdingShift = false;
                 Input.KeyUp(System.Windows.Forms.Keys.ShiftKey);
@@ -285,6 +287,11 @@ public class AutoSextant : BaseSettingsPlugin<AutoSextantSettings>
                     yield return Input.ClickElement(items[i].Position, 10);
                 }
                 Input.KeyUp(System.Windows.Forms.Keys.ControlKey);
+                yield return new WaitTime(30);
+                if (toDump == items.Count())
+                {
+                    break;
+                }
             }
         }
     }

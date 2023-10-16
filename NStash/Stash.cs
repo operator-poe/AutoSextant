@@ -116,7 +116,7 @@ public static class Stash
   }
   public static IEnumerator SelectTab(string name)
   {
-    return ScrollToTab(Tabs.FindIndex(t => t.Name == name));
+    return SelectTab(Tabs.FindIndex(t => t.Name == name));
   }
 
   public static int TabIndex(string name)

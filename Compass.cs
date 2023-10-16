@@ -10,15 +10,9 @@ public class CompassPrice
   public float DivinePrice { get; set; }
 }
 
-public class CompassList
+public static class CompassList
 {
-  public Dictionary<string, string> PriceToModName;
-  public Dictionary<string, string> ModNameToPrice;
-  public Dictionary<string, CompassPrice> Prices = new Dictionary<string, CompassPrice>();
-
-  public CompassList()
-  {
-    PriceToModName = new Dictionary<string, string>{
+  public static Dictionary<string, string> PriceToModName = new Dictionary<string, string>{
       {"Strongbox Enraged", "MapAtlasStrongboxMonstersEnrageAndDrops"},
       {"8 Modifiers", "MapAtlasMapDropsAreCorruptedAndHave8Modifiers"},
       {"Yellow Plants", "MapAtlasHarvestPlotSeedsContainYellowSeeds"},
@@ -91,11 +85,9 @@ public class CompassList
       {"Vaal Soul on Kill", "MapAtlasVaalSoulsOnKillAndExtraVaalPacks3"},
       {"Winged Scarab", "MapAtlasTormentedBetrayerAndWingedScarabDropChanceMaven"},
       {"Strongbox Enraged 600%", "MapAtlasStrongboxMonstersEnrageAndDropsMaven___"},
-      {"8 Modifiers 16 uses", "MapAtlasMapDropsAreCorruptedAndHave8ModifiersMaven"},
-      {"Sacred Grove 16 uses", "MapAtlasHarvestMaven__"},
     };
-    ModNameToPrice = PriceToModName.ToDictionary(x => x.Value, x => x.Key);
-  }
+  public static Dictionary<string, string> ModNameToPrice = PriceToModName.ToDictionary(x => x.Value, x => x.Key);
+  public static Dictionary<string, CompassPrice> Prices = new Dictionary<string, CompassPrice>();
 }
 
 
