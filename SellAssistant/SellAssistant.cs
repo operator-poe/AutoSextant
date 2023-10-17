@@ -173,8 +173,6 @@ public static class SellAssistant
         amount ??= selectedAmount;
         amount = Math.Min(amount.Value, 60);
 
-        yield return Util.ForceFocus();
-
         Input.StorePosition();
 
         List<(string, SharpDX.Vector2)> items = new List<(string, SharpDX.Vector2)>();
@@ -253,22 +251,11 @@ public static class SellAssistant
         TradeManager.Render();
         var show = _enabled;
 
-        ImGui.SetNextWindowPos(_windowPos.Item1);
-        ImGui.SetNextWindowSize(_windowPos.Item2);
+        // ImGui.SetNextWindowPos(_windowPos.Item1);
+        // ImGui.SetNextWindowSize(_windowPos.Item2);
 
         ImGui.Begin("AutoSextant SellAssistant", ref show);
         _enabled = show;
-
-        // test trademanager transfer items
-        if (ImGui.Button("Transfer Items"))
-        {
-            TradeManager.AddTradeRequest(new TradeRequest()
-            {
-                PlayerName = "test",
-                Status = TradeRequestStatus.RequestAccepted,
-            });
-        }
-
 
         ImGui.BeginChild("Top Pane", new System.Numerics.Vector2(-1, 120));
         if (CurrentReport != null)

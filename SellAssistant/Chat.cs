@@ -117,11 +117,11 @@ public static class Chat
         return ChatMessages.Skip(index + 1).ToList();
     }
 
-    public static bool CheckNewMessages(string pointerId, string search)
+    public static bool CheckNewMessages(string pointerId, string search, bool updatePointer = true)
     {
         if (pointerId == null || !_pointers.ContainsKey(pointerId))
             return false;
-        var messages = NewMessages(pointerId);
+        var messages = NewMessages(pointerId, updatePointer);
         return messages.Any(x => x.Contains(search));
     }
 

@@ -98,6 +98,7 @@ public class AutoSextant : BaseSettingsPlugin<AutoSextantSettings>
         routine?.Done();
         Input.ReleaseCtrl();
         Input.ReleaseShift();
+        Input.UnblockMouse();
     }
 
     public override Job Tick()
