@@ -15,6 +15,7 @@ namespace AutoSextant.SellAssistant;
 public enum TradeRequestStatus
 {
     None,
+    GotChange,
     RequestMade,
     RequestAccepted,
     ItemsTransferred,
@@ -27,6 +28,7 @@ public class TradeRequest
 {
     public string PlayerName { get; set; }
     public float ExpectedValue { get; set; } = 0;
+    public bool WithChange { get; set; } = false;
     public TradeRequestStatus Status { get; set; } = TradeRequestStatus.None;
 }
 
@@ -110,6 +112,13 @@ public static class TradeManager
                     {
                         case TradeRequestStatus.None:
                             Log.Debug($"Sending trade request to {ActiveTrade.PlayerName}");
+                            if (ActiveTrade.ExpectedValue > 0 && ActiveTrade.WithChange)
+                                Core.ParallelRunner.Run(new Coroutine(GetChange(), AutoSextant.Instance, _tradeCoroutineName));
+                            else
+                                SendTradeRequest();
+                            break;
+                        case TradeRequestStatus.GotChange:
+                            Log.Debug($"Sending trade request to {ActiveTrade.PlayerName}");
                             SendTradeRequest();
                             break;
                         case TradeRequestStatus.RequestMade:
@@ -155,8 +164,8 @@ public static class TradeManager
         {
             // draw total chaos value
             var chaosValue = Util.FormatChaosPrice(TotalChaosValue, DivinePrice);
-            var expectedValue = Util.FormatChaosPrice(ActiveTrade.ExpectedValue, DivinePrice);
-            var color = TotalChaosValue >= ActiveTrade.ExpectedValue * 0.99 ? Color.Green : Color.Red;
+            var expectedValue = Util.FormatChaosPrice(ActiveTrade.ExpectedValue + ChangeAmount, DivinePrice);
+            var color = TotalChaosValue >= (ActiveTrade.ExpectedValue + ChangeAmount) * 0.99 ? Color.Green : Color.Red;
             AutoSextant.Instance.Graphics.DrawText($"Total Value: {chaosValue} / {expectedValue}", rect.TopLeft + new Vector2(0, 20), color, 20);
         }
 
@@ -171,7 +180,10 @@ public static class TradeManager
     {
         get
         {
-            return NInventory.Inventory.GetByName("Charged Compass");
+            if (ActiveTrade != null && ActiveTrade.WithChange)
+                return NInventory.Inventory.GetByName("Charged Compass", "Chaos Orb");
+            else
+                return NInventory.Inventory.GetByName("Charged Compass");
         }
     }
     private static int CompassCount
@@ -209,6 +221,21 @@ public static class TradeManager
         }
     }
 
+    private static float ChangeAmount
+    {
+        get
+        {
+            if (ActiveTrade.ExpectedValue <= 0 || !ActiveTrade.WithChange)
+                return 0;
+            else
+            {
+                float remaining = DivinePrice - (ActiveTrade.ExpectedValue % DivinePrice);
+                return remaining == DivinePrice ? 0 : remaining;
+            }
+        }
+    }
+
+
     private static float TotalChaosValue
     {
         get
@@ -234,6 +261,44 @@ public static class TradeManager
             var enableAcceptLabel = TradeWindow.GetChildFromIndices(3, 1, 0, 0, 4);
             return enableAcceptLabel != null && enableAcceptLabel.Width > 0;
         }
+    }
+
+    private static int ChaosOrbsInInventory
+    {
+        get
+        {
+            return NInventory.Inventory.GetByName("Chaos Orb").Sum(item => item.Item.GetComponent<ExileCore.PoEMemory.Components.Stack>().Size);
+        }
+    }
+
+    public static IEnumerator GetChange()
+    {
+        yield return Util.ForceFocus();
+        yield return AutoSextant.Instance.EnsureStash();
+        yield return NStash.Stash.SelectTab(AutoSextant.Instance.Settings.RestockSextantFrom.Value);
+        var chaosOrbs = Stash.GetFirstItemTypeFromStash("Chaos Orb");
+        var chaosStack = new Item(chaosOrbs);
+        var change = (int)ChangeAmount;
+
+        while (ChaosOrbsInInventory < change)
+        {
+            var chaosLeft = change - ChaosOrbsInInventory;
+            if (chaosLeft < 20)
+            {
+                var position = NInventory.Inventory.NextFreeInventoryPositinon.Position;
+                yield return chaosStack.GetFraction(chaosLeft);
+                yield return Input.ClickElement(position);
+            }
+            else
+            {
+                yield return chaosStack.GetStack(true);
+            }
+            yield return new WaitTime(30);
+        }
+
+        lock (ActiveTrade)
+            ActiveTrade.Status = TradeRequestStatus.GotChange;
+        yield break;
     }
 
     public static IEnumerator StashCurrency()
@@ -305,7 +370,7 @@ public static class TradeManager
             yield return new WaitTime(50);
             int itemCount = 0;
             HashSet<int> itemsHovered = new HashSet<int>();
-            while (TotalChaosValue < ActiveTrade.ExpectedValue * 0.99 || ItemsLeftToHover)
+            while (TotalChaosValue < (ActiveTrade.ExpectedValue + ChangeAmount) * 0.99 || ItemsLeftToHover)
             {
                 itemCount = OfferedItems.Count();
                 if (itemsHovered.Count() == OfferedItems.Count() && ItemsLeftToHover)

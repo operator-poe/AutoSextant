@@ -253,7 +253,11 @@ public class Whisper
         key = Util.MapIndexToNumPad(++index);
         buttons.Add((key, $"Trade", () =>
         {
-            Chat.QueueMessage("/tradewith " + PlayerName);
+            TradeManager.AddTradeRequest(new TradeRequest
+            {
+                PlayerName = PlayerName,
+                ExpectedValue = 0
+            });
             HasTraded = true;
         }
         ));
@@ -264,6 +268,18 @@ public class Whisper
             {
                 PlayerName = PlayerName,
                 ExpectedValue = TotalPrice,
+            });
+            HasTraded = true;
+        }
+        ));
+        key = Util.MapIndexToNumPad(++index);
+        buttons.Add((key, $"Trade (Change)", () =>
+        {
+            TradeManager.AddTradeRequest(new TradeRequest
+            {
+                PlayerName = PlayerName,
+                ExpectedValue = TotalPrice,
+                WithChange = true
             });
             HasTraded = true;
         }

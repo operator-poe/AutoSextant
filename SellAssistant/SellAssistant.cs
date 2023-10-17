@@ -83,11 +83,6 @@ public static class SellAssistant
 
     public static void Enable()
     {
-        if (!NStash.Stash.IsVisible)
-        {
-            Error.AddAndShow("SellAssistant", "Stash is not visible");
-            return;
-        }
         var inventoryRect = I.GameController.Game.IngameState.IngameUi.InventoryPanel.GetClientRect();
         _windowPos = (new System.Numerics.Vector2(inventoryRect.X, inventoryRect.Y), new System.Numerics.Vector2(inventoryRect.Width, inventoryRect.Height / 2));
 
@@ -111,6 +106,7 @@ public static class SellAssistant
     public static IEnumerator Init()
     {
         yield return Util.ForceFocus();
+        yield return AutoSextant.Instance.EnsureStash();
         var dumpTabs = I.Settings.DumpTabs.Value.Split(',').Select(x => x.Trim()).ToList();
         foreach (var t in dumpTabs)
         {
@@ -165,6 +161,8 @@ public static class SellAssistant
 
     public static IEnumerator Highlight()
     {
+        yield return Util.ForceFocus();
+        yield return AutoSextant.Instance.EnsureStash();
         var tft = CompassList.ModNameToPrice[selectedMod];
         yield return Util.ForceFocus();
         Util.SetClipBoardText(tft);
@@ -184,6 +182,7 @@ public static class SellAssistant
     public static IEnumerator TakeFromStash(string mod = null, int? amount = null)
     {
         yield return Util.ForceFocus();
+        yield return AutoSextant.Instance.EnsureStash();
 
         mod ??= selectedMod;
         amount ??= selectedAmount;
