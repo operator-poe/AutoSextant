@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
@@ -9,6 +10,55 @@ namespace AutoSextant.SellAssistant;
 
 public class PoeStackReport
 {
+    public static readonly string DataPath = AutoSextant.Instance.DirectoryFullName + "\\Data\\poeStackReport.txt";
+    private static DateTime _lastModified = DateTime.MinValue;
+
+    private static ThrottledAction _updateLastModified = new ThrottledAction(TimeSpan.FromSeconds(1), () =>
+    {
+        if (File.Exists(DataPath))
+            _lastModified = File.GetLastWriteTime(DataPath);
+        else
+            _lastModified = DateTime.MinValue;
+    });
+    private static ThrottledAction _checkClipboardForReport = new ThrottledAction(TimeSpan.FromSeconds(1), () =>
+    {
+        string report = Util.GetClipboardText();
+        if (report.Contains(":divine:"))
+        {
+            WriteReportToFile(report);
+            _updateLastModified.Invoke();
+            Util.ClearClipboard();
+        }
+    });
+
+    public static void CheckClipboardForReport()
+    {
+        _checkClipboardForReport.Run();
+    }
+
+    public static DateTime LastModified
+    {
+        get
+        {
+            _updateLastModified.Run();
+
+            return _lastModified;
+        }
+    }
+
+    public static PoeStackReport CreateFromFile()
+    {
+        if (!File.Exists(DataPath))
+            return null;
+        string report = File.ReadAllText(DataPath);
+        return new PoeStackReport(report);
+    }
+
+    public static void WriteReportToFile(string report)
+    {
+        File.WriteAllText(DataPath, report);
+    }
+
     public float DivinePrice { get; set; }
     public Dictionary<string, float> Prices { get; set; }
 

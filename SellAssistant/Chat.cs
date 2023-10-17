@@ -20,7 +20,7 @@ public class ChatPointer
 }
 public static class Chat
 {
-    private static Dictionary<string, ChatPointer> _pointers = new Dictionary<string, ChatPointer>();
+    public static Dictionary<string, ChatPointer> _pointers = new Dictionary<string, ChatPointer>();
     public static ChatPanel Panel
     {
         get
@@ -94,27 +94,21 @@ public static class Chat
         if (ChatMessages.Count == 0)
             return new List<string>();
 
-        var index = pointer.Index;
-        if (ChatMessages.Count < pointer.Index + 1 || ChatMessages[pointer.Index] != pointer.Pointer)
+        List<string> Messages = new List<string>();
+        for (int i = ChatMessages.Count - 1; i >= 0; i--)
         {
-            // Messages have been deleted, so we can't find the pointer
-            // Go from the top backwards until we find the pointer
-            for (int i = ChatMessages.Count - 1; i >= 0; i--)
+            if (ChatMessages[i] == pointer.Pointer)
             {
-                if (ChatMessages[i] == pointer.Pointer)
-                {
-                    index = ChatMessages.Count - 1 - i;
-                    break;
-                }
+                break;
             }
-
+            Messages.Add(ChatMessages[i]);
         }
         if (updatePointer)
         {
             pointer.Index = ChatMessages.Count - 1;
             pointer.Pointer = ChatMessages[^1];
         }
-        return ChatMessages.Skip(index + 1).ToList();
+        return Messages;
     }
 
     public static bool CheckNewMessages(string pointerId, string search, bool updatePointer = true)

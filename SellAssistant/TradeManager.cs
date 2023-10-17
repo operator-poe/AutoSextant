@@ -1,10 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.Data;
 using System.Linq;
-using System.Threading.Tasks;
-using System.Windows.Forms;
 using ExileCore;
 using ExileCore.PoEMemory.Components;
 using ExileCore.PoEMemory.Elements.InventoryElements;
@@ -22,15 +19,14 @@ public enum TradeRequestStatus
     RequestAccepted,
     ItemsTransferred,
     ValuesHovered,
-    ManualFinish,
     Accepted,
     Cancelled,
-
+    Done,
 }
 public class TradeRequest
 {
     public string PlayerName { get; set; }
-    public float ExpectedValue { get; set; }
+    public float ExpectedValue { get; set; } = 0;
     public TradeRequestStatus Status { get; set; } = TradeRequestStatus.None;
 }
 
@@ -68,11 +64,16 @@ public static class TradeManager
     public static void StopAllRoutines(bool clearQueue = true)
     {
         if (clearQueue)
-            TradeQueue.Clear();
-        ActiveTrade = null;
+            lock (TradeQueue)
+                TradeQueue.Clear();
+        if (ActiveTrade != null)
+            lock (ActiveTrade)
+                ActiveTrade = null;
         if (chatPointer != null)
             Chat.RemovePointer(chatPointer);
-        chatPointer = null;
+        if (chatPointer != null)
+            lock (chatPointer)
+                chatPointer = null;
         Core.ParallelRunner.FindByName(_tradeCoroutineName)?.Done();
         Input.ReleaseCtrl();
     }
@@ -80,64 +81,90 @@ public static class TradeManager
     public static void Tick()
     {
         var coroutineRunning = Core.ParallelRunner.FindByName(_tradeCoroutineName) != null;
-        if (TradeQueue.Count > 0 && ActiveTrade == null && !coroutineRunning)
+        lock (TradeQueue)
         {
-            ActiveTrade = TradeQueue[0];
-            TradeQueue.RemoveAt(0);
-        }
-
-        if (ActiveTrade != null && !coroutineRunning)
-        {
-            if (chatPointer == null)
-                chatPointer = Chat.GetPointer();
-            if (Chat.CheckNewMessages(chatPointer, "Trade cancelled", false)) // Always interrupt if cancelled
-                ActiveTrade.Status = TradeRequestStatus.Cancelled;
-            if (Chat.CheckNewMessages(chatPointer, "Trade cancelled"))
-                ActiveTrade.Status = TradeRequestStatus.Cancelled;
-
-            switch (ActiveTrade.Status)
+            if (TradeQueue.Count > 0 && ActiveTrade == null && !coroutineRunning)
             {
-                case TradeRequestStatus.None:
-                    Log.Debug($"Sending trade request to {ActiveTrade.PlayerName}");
-                    SendTradeRequest();
-                    break;
-                case TradeRequestStatus.RequestMade:
-                    Log.Debug($"Waiting for {ActiveTrade.PlayerName} to accept trade request");
-                    if (TradeWindow.IsVisible)
+                ActiveTrade = TradeQueue[0];
+                TradeQueue.RemoveAt(0);
+            }
+
+            if (ActiveTrade != null && !coroutineRunning)
+            {
+                lock (ActiveTrade)
+                {
+                    if (chatPointer == null)
+                        chatPointer = Chat.GetPointer();
+                    if (Chat.CheckNewMessages(chatPointer, "Trade cancelled", false)) // Always interrupt if cancelled
+                        ActiveTrade.Status = TradeRequestStatus.Cancelled;
+                    if (Chat.CheckNewMessages(chatPointer, "That player is currently busy", false))
+                        ActiveTrade.Status = TradeRequestStatus.Cancelled;
+                    if (Chat.CheckNewMessages(chatPointer, "That player is currently busy", false))
+                        ActiveTrade.Status = TradeRequestStatus.Cancelled;
+                    if (Chat.CheckNewMessages(chatPointer, "Player not found in this area", false))
+                        ActiveTrade.Status = TradeRequestStatus.Cancelled;
+                    if (Chat.CheckNewMessages(chatPointer, "Trade accepted"))
+                        ActiveTrade.Status = TradeRequestStatus.Accepted;
+
+                    switch (ActiveTrade.Status)
                     {
-                        ActiveTrade.Status = TradeRequestStatus.RequestAccepted;
+                        case TradeRequestStatus.None:
+                            Log.Debug($"Sending trade request to {ActiveTrade.PlayerName}");
+                            SendTradeRequest();
+                            break;
+                        case TradeRequestStatus.RequestMade:
+                            Log.Debug($"Waiting for {ActiveTrade.PlayerName} to accept trade request");
+                            if (TradeWindow.IsVisible)
+                            {
+                                ActiveTrade.Status = TradeRequestStatus.RequestAccepted;
+                            }
+                            break;
+                        case TradeRequestStatus.RequestAccepted:
+                            Core.ParallelRunner.Run(new Coroutine(TransferItems(), AutoSextant.Instance, _tradeCoroutineName));
+                            break;
+                        case TradeRequestStatus.ItemsTransferred:
+                            Log.Debug("All items transferred, begin hovering items");
+                            Core.ParallelRunner.Run(new Coroutine(HoverTradeItems(), AutoSextant.Instance, _tradeCoroutineName));
+                            break;
+                        case TradeRequestStatus.ValuesHovered:
+                            break;
+                        case TradeRequestStatus.Accepted:
+                            Log.Debug($"Detected that trade with {ActiveTrade.PlayerName} has been accepted, stashing currency");
+                            Core.ParallelRunner.Run(new Coroutine(StashCurrency(), AutoSextant.Instance, _tradeCoroutineName));
+                            break;
+                        case TradeRequestStatus.Cancelled:
+                        case TradeRequestStatus.Done:
+                            Log.Debug($"Trade {ActiveTrade.Status}");
+                            StopAllRoutines(false);
+                            break;
+                        default:
+                            break;
                     }
-                    break;
-                case TradeRequestStatus.RequestAccepted:
-                    Core.ParallelRunner.Run(new Coroutine(TransferItems(), AutoSextant.Instance, _tradeCoroutineName));
-                    break;
-                case TradeRequestStatus.ItemsTransferred:
-                    Log.Debug("All items transferred, begin hovering items");
-                    Core.ParallelRunner.Run(new Coroutine(HoverTradeItems(), AutoSextant.Instance, _tradeCoroutineName));
-                    break;
-                case TradeRequestStatus.ValuesHovered:
-                    break;
-                case TradeRequestStatus.Accepted:
-                case TradeRequestStatus.Cancelled:
-                    StopAllRoutines(false);
-                    break;
-                default:
-                    break;
+                }
             }
         }
     }
 
     public static void Render()
     {
-        if (ActiveTrade == null || !TradeWindow.IsVisible && ActiveTrade.ExpectedValue > 0)
+        if (ActiveTrade == null || !TradeWindow.IsVisible)
             return;
 
         var rect = TradeWindow.GetClientRect();
-        // draw total chaos value
-        var chaosValue = Util.FormatChaosPrice(TotalChaosValue, DivinePrice);
-        var expectedValue = Util.FormatChaosPrice(ActiveTrade.ExpectedValue, DivinePrice);
-        var color = TotalChaosValue >= ActiveTrade.ExpectedValue * 0.95 ? Color.Green : Color.Red;
-        AutoSextant.Instance.Graphics.DrawText($"Total Value: {chaosValue} / {expectedValue}", rect.TopLeft, color, 20);
+        if (ActiveTrade.ExpectedValue > 0)
+        {
+            // draw total chaos value
+            var chaosValue = Util.FormatChaosPrice(TotalChaosValue, DivinePrice);
+            var expectedValue = Util.FormatChaosPrice(ActiveTrade.ExpectedValue, DivinePrice);
+            var color = TotalChaosValue >= ActiveTrade.ExpectedValue * 0.99 ? Color.Green : Color.Red;
+            AutoSextant.Instance.Graphics.DrawText($"Total Value: {chaosValue} / {expectedValue}", rect.TopLeft + new Vector2(0, 20), color, 20);
+        }
+
+        // add another row and say if we're waiting for more items
+        var needToHover = ItemsLeftToHover;
+        var text = needToHover ? "Waiting for more items" : "Ready to accept";
+        var textColor = needToHover ? Color.Red : Color.Green;
+        AutoSextant.Instance.Graphics.DrawText(text, rect.TopLeft + new Vector2(0, 40), textColor, 20);
     }
 
     private static IList<InventSlotItem> Compasses
@@ -209,6 +236,22 @@ public static class TradeManager
         }
     }
 
+    public static IEnumerator StashCurrency()
+    {
+        yield return AutoSextant.Instance.EnsureStash();
+        var stashableCurrency = NInventory.Inventory.GetByName("Chaos Orb", "Divine Orb");
+        Input.HoldCtrl();
+        foreach (var item in stashableCurrency)
+        {
+            yield return Input.ClickElement(item.GetClientRect().Center);
+            yield return new WaitTime(10);
+        }
+        Input.ReleaseCtrl();
+
+        lock (ActiveTrade)
+            ActiveTrade.Status = TradeRequestStatus.Done;
+    }
+
     public static IEnumerator HoverTradeItems()
     {
         bool valueMode = false;
@@ -223,38 +266,29 @@ public static class TradeManager
         {
             Log.Debug("Hovering other player's items in non-value mode");
             int startingItems = 0;
-            Dictionary<int, bool> hoveredItems = new Dictionary<int, bool>();
+            HashSet<int> hoveredItems = new HashSet<int>();
             // In non-value mode we're just waiting for the trade to be accepted
             // mouse movement is not restricted, only taken over when new items are added
             while (ActiveTrade.Status == TradeRequestStatus.ItemsTransferred)
             {
-                var dirty = false;
-                if (startingItems != OfferedItems.Count())
+                startingItems = OfferedItems.Count();
+                if (hoveredItems.Count() == OfferedItems.Count() && ItemsLeftToHover)
                 {
-                    Log.Debug($"Items added, hovering {OfferedItems.Count()} items total");
-                    startingItems = OfferedItems.Count();
-                    dirty = true;
+                    hoveredItems.Clear();
                 }
-                if (dirty)
+                for (int i = 0; i < OfferedItems.Count(); i++)
                 {
-                    for (int i = 0; i < OfferedItems.Count(); i++)
+                    if (!hoveredItems.Contains(i))
                     {
-                        if (!hoveredItems.ContainsKey(i))
-                            hoveredItems.Add(i, false);
-
-                        if (!hoveredItems[i])
-                        {
-                            yield return new WaitTime(10);
-                            Input.SetCursorPos(OfferedItems[i].GetClientRect().Center);
-                            yield return new WaitTime(10);
-                            // Width is only intialized after the item is hovered
-                            yield return new WaitFunctionTimed(() => OfferedItems[i].Width > 0, false, 100);
-                            hoveredItems[i] = true;
-                        }
+                        yield return new WaitTime(10);
+                        Input.SetCursorPos(OfferedItems[i].GetClientRect().Center);
+                        yield return new WaitTime(10);
+                        // Width is only intialized after the item is hovered
+                        yield return new WaitFunctionTimed(() => OfferedItems[i].Tooltip.Width > 0, false, 100);
+                        hoveredItems.Add(i);
                     }
                 }
-                Log.Debug($"Hovered {hoveredItems.Count(x => x.Value)} of {hoveredItems.Count} items, waiting for more");
-                yield return new WaitFunctionTimed(() => OfferedItems.Count() > startingItems, false, 500);
+                yield return new WaitFunctionTimed(() => OfferedItems.Count() != startingItems, false, 500);
             }
             // one last check to make sure we didn't miss any items
             if (ItemsLeftToHover)
@@ -265,47 +299,40 @@ public static class TradeManager
 
         Log.Debug("Hovering other player's items in value mode");
 
-        int itemCount = 0;
-        Dictionary<int, bool> itemsHovered = new Dictionary<int, bool>();
-        while (TotalChaosValue < ActiveTrade.ExpectedValue * 0.95)
+
+        while (TradeWindow is { IsVisible: true })
         {
-            Log.Debug($"Total value of {TotalChaosValue} is less than {ActiveTrade.ExpectedValue * 0.95}, waiting for more items to hover");
-            var dirty = false;
-            if (itemCount != OfferedItems.Count())
+            yield return new WaitTime(50);
+            int itemCount = 0;
+            HashSet<int> itemsHovered = new HashSet<int>();
+            while (TotalChaosValue < ActiveTrade.ExpectedValue * 0.99 || ItemsLeftToHover)
             {
-                Log.Debug($"Items added, hovering {OfferedItems.Count()} items total");
                 itemCount = OfferedItems.Count();
-                dirty = true;
-            }
-            if (dirty)
-            {
+                if (itemsHovered.Count() == OfferedItems.Count() && ItemsLeftToHover)
+                {
+                    itemsHovered.Clear();
+                }
                 for (int i = 0; i < OfferedItems.Count(); i++)
                 {
-                    if (!itemsHovered.ContainsKey(i))
-                        itemsHovered.Add(i, false);
-
-                    if (!itemsHovered[i])
+                    if (!itemsHovered.Contains(i))
                     {
                         yield return new WaitTime(10);
                         Input.SetCursorPos(OfferedItems[i].GetClientRect().Center);
                         yield return new WaitTime(10);
                         // Width is only intialized after the item is hovered
-                        yield return new WaitFunctionTimed(() => OfferedItems[i].Width > 0, false, 100);
-                        itemsHovered[i] = true;
+                        yield return new WaitFunctionTimed(() => OfferedItems[i].Tooltip.Width > 0, false, 100);
+                        itemsHovered.Add(i);
                     }
                 }
+                yield return new WaitTime(500);
             }
-            Log.Debug($"Hovered {itemsHovered.Count(x => x.Value)} of {itemsHovered.Count} items, waiting for more");
-            yield return new WaitFunctionTimed(() => OfferedItems.Count() > itemCount, false, 500);
+            if (ItemsLeftToHover)
+                continue;
+            yield return new WaitTime(50);
+            if (!TradeWindow.SellerAccepted)
+                yield return Input.ClickElement(TradeWindow.AcceptButton.GetClientRect().Center);
+            yield return new WaitTime(50);
         }
-        // one last check to make sure we didn't miss any items
-        if (ItemsLeftToHover)
-            yield return HoverTradeItems();
-
-        Log.Debug($"Total value of {TotalChaosValue} is greater than {ActiveTrade.ExpectedValue * 0.95}, accepting trade");
-        yield return new WaitTime(100);
-        yield return Input.ClickElement(TradeWindow.AcceptButton.GetClientRect().Center);
-        yield return new WaitFunctionTimed(() => TradeWindow.SellerAccepted, false, 1000, "Button never reached accepted state");
     }
 
     public static IEnumerator TransferItems()

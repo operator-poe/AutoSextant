@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.RegularExpressions;
+using System.Windows.Forms;
 
 namespace AutoSextant.SellAssistant;
 
@@ -58,6 +59,7 @@ public class Whisper
 
     public string PlayerName { get; set; }
     public string Message { get; set; }
+    public string Uuid { get; set; }
 
     public List<WhisperItem> Items { get; set; } = new List<WhisperItem>();
 
@@ -172,10 +174,118 @@ public class Whisper
                 return new Whisper
                 {
                     PlayerName = username,
-                    Items = items
+                    Items = items,
+                    Uuid = Guid.NewGuid().ToString(),
                 };
             }
         }
         return null;
+    }
+
+
+    public List<(Keys, string, Action)> GetButtonsForWhisper()
+    {
+        var buttons = new List<(Keys, string, Action)>();
+
+        int index = 0;
+        Keys key;
+        if (
+            !HasSentInvite &&
+            (
+                Item.Status == FullfillmentStatus.Available ||
+                (Item.Status == FullfillmentStatus.NotEnough && HasSentPartial)
+            )
+        )
+        {
+            key = Util.MapIndexToNumPad(++index);
+            buttons.Add((key, $"Invite", () =>
+            {
+                HasSentInvite = true;
+                Chat.QueueMessage("/invite " + PlayerName);
+            }
+            ));
+        }
+        else if (Item.Status == FullfillmentStatus.NotEnough && !HasSentPartial)
+        {
+            key = Util.MapIndexToNumPad(++index);
+            buttons.Add((key, $"Partial", () =>
+            {
+                if (SellAssistant.CurrentReport != null)
+                {
+                    var priceString = SellAssistant.CurrentReport.AmountToString(Item.Name, SellAssistant.CompassCounts[Item.ModName]);
+                    if (priceString != null)
+                        Chat.QueueMessage($"@{PlayerName} {SellAssistant.CompassCounts[Item.ModName]} {Item.Name} left for {priceString}, still interested?");
+                    else
+                        Chat.QueueMessage($"@{PlayerName} I only have {SellAssistant.CompassCounts[Item.ModName]} {Item.Name} left, still interested?");
+                }
+                else
+                {
+                    Chat.QueueMessage($"@{PlayerName} I only have {SellAssistant.CompassCounts[Item.ModName]} {Item.Name} left, still interested?");
+                }
+                HasSentPartial = true;
+            }
+            ));
+        }
+
+        if (Item.Status == FullfillmentStatus.NotAvailable)
+        {
+            key = Util.MapIndexToNumPad(++index);
+            buttons.Add((key, $"Sold", () =>
+            {
+                Chat.QueueMessage($"@{PlayerName} Sorry, all my \"{Item.Name}\" are sold");
+                Hidden = true;
+            }
+            ));
+        }
+
+        if (Item.Status != FullfillmentStatus.NotAvailable)
+        {
+            key = Util.MapIndexToNumPad(++index);
+            buttons.Add((key, $"Extract", () =>
+            {
+                SellAssistant.AddToExtractionQueue(Items.Select(x => (x.ModName, x.Quantity)).ToList());
+                HasExtracted = true;
+            }
+            ));
+        }
+
+
+        key = Util.MapIndexToNumPad(++index);
+        buttons.Add((key, $"Trade", () =>
+        {
+            Chat.QueueMessage("/tradewith " + PlayerName);
+            HasTraded = true;
+        }
+        ));
+        key = Util.MapIndexToNumPad(++index);
+        buttons.Add((key, $"Trade NEW", () =>
+        {
+            TradeManager.AddTradeRequest(new TradeRequest
+            {
+                PlayerName = PlayerName,
+                ExpectedValue = TotalPrice,
+            });
+            HasTraded = true;
+        }
+        ));
+
+        key = Util.MapIndexToNumPad(++index);
+        buttons.Add((key, $"Kick", () =>
+        {
+            Chat.QueueMessage(new string[] {
+                            "/kick " + PlayerName,
+                            $"@{PlayerName} ty"
+                        });
+            Hidden = true;
+        }
+        ));
+
+        buttons.Add((Keys.NumPad0, "X", () =>
+        {
+            Hidden = true;
+        }
+        ));
+
+        return buttons;
     }
 }

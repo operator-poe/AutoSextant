@@ -23,9 +23,25 @@ public static class SellAssistant
     public static string selectedMod = "";
     public static int selectedAmount = 1;
     public static string selectedFilter = "";
-    public static float priceMultiplier = 1.2f;
 
-    public static PoeStackReport CurrentReport = null;
+    private static PoeStackReport _currentReport = null;
+    private static DateTime _lastReportRefresh = DateTime.MinValue;
+    public static PoeStackReport CurrentReport
+    {
+        get
+        {
+            if (_currentReport == null || _lastReportRefresh < PoeStackReport.LastModified)
+            {
+                _currentReport = PoeStackReport.CreateFromFile();
+                _lastReportRefresh = PoeStackReport.LastModified;
+            }
+            return _currentReport;
+        }
+        set
+        {
+            _currentReport = value;
+        }
+    }
 
     private static AutoSextant I = AutoSextant.Instance;
 
@@ -73,8 +89,8 @@ public static class SellAssistant
             return;
         }
         var inventoryRect = I.GameController.Game.IngameState.IngameUi.InventoryPanel.GetClientRect();
-        _windowPos = (new System.Numerics.Vector2(inventoryRect.X, inventoryRect.Y),
-        new System.Numerics.Vector2(inventoryRect.Width, inventoryRect.Height / 2));
+        _windowPos = (new System.Numerics.Vector2(inventoryRect.X, inventoryRect.Y), new System.Numerics.Vector2(inventoryRect.Width, inventoryRect.Height / 2));
+
         _enabled = true;
         Core.ParallelRunner.Run(new Coroutine(Init(), AutoSextant.Instance, _sellAssistantInitCoroutineName));
     }
@@ -226,6 +242,7 @@ public static class SellAssistant
         WhisperManager.Tick();
         Chat.Tick();
         TradeManager.Tick();
+        PoeStackReport.CheckClipboardForReport();
 
         if (ExtractionQueue.Count > 0 && Core.ParallelRunner.FindByName(_sellAssistantTakeFromStashCoroutineName) == null)
         {
@@ -260,42 +277,13 @@ public static class SellAssistant
         ImGui.BeginChild("Top Pane", new System.Numerics.Vector2(-1, 120));
         if (CurrentReport != null)
         {
-            if (ImGui.Button("Clear PoE Stack Report"))
-            {
-                CurrentReport = null;
-            }
+            ImGui.Text("PoE Stack Report last updated: ");
             ImGui.SameLine();
-            if (ImGui.Button("Refresh PoE Stack Report"))
-            {
-                try
-                {
-                    var report = Util.GetClipboardText();
-                    CurrentReport = new PoeStackReport(report);
-                }
-                catch (System.Exception e)
-                {
-                    Error.AddAndShow("SellAssistant", e.ToString());
-                }
-
-            }
+            ImGui.Text(Util.FormatTimeSpan(DateTime.Now - _lastReportRefresh) + " ago");
         }
         else
         {
-            ImGui.SliderFloat("Price Multiplier", ref priceMultiplier, 1, 2);
-            ImGui.SameLine();
-            if (ImGui.Button("Use PoE Stack Report"))
-            {
-                try
-                {
-                    var report = Util.GetClipboardText();
-                    CurrentReport = new PoeStackReport(report);
-                }
-                catch (System.Exception e)
-                {
-                    Error.AddAndShow("SellAssistant", e.ToString());
-                }
-            }
-
+            ImGui.TextColored(new System.Numerics.Vector4(1, 0, 0, 1), "No PoE Stack Report loaded, please copy one to your clipboard");
         }
         ImGui.Spacing();
         ImGui.Separator();
@@ -313,8 +301,7 @@ public static class SellAssistant
             else
             {
                 var price = CompassList.Prices[CompassList.ModNameToPrice[selectedMod]];
-                var mPrice = (float)(price.DivinePrice > 1.0f ? price.DivinePrice : price.ChaosPrice) * selectedAmount * priceMultiplier;
-                var priceString = price.DivinePrice > 1.0f ? mPrice.ToString("0.0") + " Divine" : mPrice.ToString("0.0") + " Chaos";
+                var priceString = Util.FormatChaosPrice((float)(price.DivinePrice > 1.0f ? price.DivinePrice : price.ChaosPrice) * selectedAmount, price.DivinePrice);
                 ImGui.Text($" | {priceString}");
             }
 
@@ -394,8 +381,7 @@ public static class SellAssistant
                 else
                 {
                     var price = CompassList.Prices[tft];
-                    var mPrice = (float)(price.DivinePrice > 1.0f ? price.DivinePrice : price.ChaosPrice) * CompassCounts[mod] * priceMultiplier;
-                    var priceString = price.DivinePrice > 1.0f ? mPrice.ToString("0.0") + "d" : mPrice.ToString("0.0") + "c";
+                    var priceString = Util.FormatChaosPrice((float)(price.DivinePrice > 1.0f ? price.DivinePrice : price.ChaosPrice) * CompassCounts[mod], price.DivinePrice);
                     ImGui.Text(priceString);
                 }
 

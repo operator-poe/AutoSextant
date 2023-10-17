@@ -304,7 +304,7 @@ public class AutoSextant : BaseSettingsPlugin<AutoSextantSettings>
         }
     }
 
-    private IEnumerator EnsureStash()
+    public IEnumerator EnsureStash()
     {
         if (GameController.IngameState.IngameUi.StashElement.IsVisible && GameController.IngameState.IngameUi.InventoryPanel.IsVisible)
         {
@@ -328,14 +328,14 @@ public class AutoSextant : BaseSettingsPlugin<AutoSextantSettings>
             }
             if (!labelOnGround.IsVisible)
             {
-                LogError("Stash not visible");
+                Log.Error("Stash not visible");
                 yield break;
             }
             yield return Input.ClickElement(labelOnGround.Label.GetClientRect().Center);
             yield return new WaitFunctionTimed(() => stash is { IsVisible: true }, true, 2000, "Stash not reached in time");
             if (stash is { IsVisible: false })
             {
-                LogError("Stash not visible");
+                Log.Error("Stash not visible");
                 yield break;
             }
         }

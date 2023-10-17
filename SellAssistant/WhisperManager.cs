@@ -1,9 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Numerics;
 using System.Text.RegularExpressions;
-using ExileCore;
-using ExileCore.PoEMemory.Elements;
+using ExileCore.Shared.Nodes;
 using ImGuiNET;
 
 namespace AutoSextant.SellAssistant;
@@ -25,7 +25,7 @@ public static class WhisperManager
     // }.Where(x => x != null).ToList();//.Select(x => { x.InArea = true; return x; }).ToList();
 
     private static string chatPointer = Chat.GetPointer();
-    public static void Tick()
+    private static ThrottledAction _chatUpdate = new ThrottledAction(TimeSpan.FromMilliseconds(500), () =>
     {
         foreach (var message in Chat.NewMessages(chatPointer))
         {
@@ -67,6 +67,66 @@ public static class WhisperManager
                 }
             }
         }
+    });
+
+    private static bool _hotKeysRegistered = false;
+    private static Dictionary<int, HotkeyNode> _hotkeys = new Dictionary<int, HotkeyNode>();
+    private static string _hotKeySelected = "";
+
+    public static void Tick()
+    {
+        _chatUpdate.Run();
+
+        if (!_hotKeysRegistered)
+        {
+            for (int i = 0; i < 10; i++)
+            {
+                var key = Util.MapIndexToNumPad(i);
+                Input.RegisterKey(key);
+                _hotkeys[i] = new HotkeyNode(Util.MapIndexToNumPad(i));
+            }
+            _hotKeysRegistered = true;
+        }
+
+        var selected = Whispers.Find(x => x.Uuid == _hotKeySelected);
+        if (selected != null && selected.Hidden)
+        {
+            _hotKeySelected = "";
+            return;
+        }
+
+        if (_hotkeys[9].PressedOnce())
+            _hotKeySelected = "";
+
+        var whispers = Whispers.Where(x => !x.Hidden).ToList();
+        if (selected == null)
+        {
+            for (int i = 1; i <= whispers.Count; i++)
+            {
+                if (_hotkeys[i].PressedOnce())
+                {
+                    _hotKeySelected = whispers[i - 1].Uuid;
+                    break;
+                }
+            }
+        }
+        else
+        {
+            var actions = selected.GetButtonsForWhisper();
+            foreach (var (key, _, action) in actions)
+            {
+                if (_hotkeys[Util.MapNumPadToIndex(key)].PressedOnce())
+                {
+                    action.Invoke();
+                    break;
+                }
+            }
+        }
+    }
+
+    private static void ClearWhispers()
+    {
+        Whispers.Clear();
     }
 
     public static void Render()
@@ -80,7 +140,21 @@ public static class WhisperManager
             ImGui.TableSetupColumn("Value", ImGuiTableColumnFlags.WidthStretch);
             ImGui.TableSetupColumn("Status", ImGuiTableColumnFlags.WidthFixed, tableWidth * 0.1f);
             ImGui.TableSetupColumn("", ImGuiTableColumnFlags.WidthStretch);
-            ImGui.TableHeadersRow();
+            ImGui.TableNextRow(ImGuiTableRowFlags.Headers);
+            for (int col = 0; col < 6; ++col)
+            {
+                ImGui.TableNextColumn();
+                if (col == 5) // Add button to last header column
+                {
+                    float buttonHeight = ImGui.GetFontSize() + ImGui.GetStyle().FramePadding.Y;
+                    if (ImGui.Button("Clear", new Vector2(0, buttonHeight)))  // Width 0 means auto-sizing to fit text
+                        ClearWhispers();
+                }
+                else
+                {
+                    ImGui.Text(col == 0 ? "Buyer" : col == 1 ? "Name" : col == 2 ? "Amount" : col == 3 ? "Value" : "Status");
+                }
+            }
 
             var whispers = Whispers.Where(x => !x.Hidden).ToList();
             for (int i = 0; i < whispers.Count; i++)
@@ -134,92 +208,16 @@ public static class WhisperManager
 
                 ImGui.TableNextColumn();
 
-                if (
-                    !whisper.HasSentInvite &&
-                    (
-                        whisper.Item.Status == FullfillmentStatus.Available ||
-                        (whisper.Item.Status == FullfillmentStatus.NotEnough && whisper.HasSentPartial)
-                    )
-                )
+                float buttonWidth = ImGui.GetContentRegionAvail().X;
+                var isSelected = whisper.Uuid == _hotKeySelected;
+                foreach (var (key, label, action) in whisper.GetButtonsForWhisper())
                 {
-                    if (ImGui.Button("Invite"))
+                    if (ImGui.Button(isSelected ? $"[{Util.MapNumPadToIndex(key)}] {label}" : label, new Vector2(buttonWidth, 0)))
                     {
-                        Chat.QueueMessage("/invite " + whisper.PlayerName);
-                        whisper.HasSentInvite = true;
-                    }
-                }
-                else if (whisper.Item.Status == FullfillmentStatus.NotEnough && !whisper.HasSentPartial)
-                {
-                    if (ImGui.Button("Partial"))
-                    {
-                        if (SellAssistant.CurrentReport != null)
-                        {
-                            var priceString = SellAssistant.CurrentReport.AmountToString(whisper.Item.Name, SellAssistant.CompassCounts[whisper.Item.ModName]);
-                            if (priceString != null)
-                                Chat.QueueMessage($"@{whisper.PlayerName} {SellAssistant.CompassCounts[whisper.Item.ModName]} {whisper.Item.Name} left for {priceString}, still interested?");
-                            else
-                                Chat.QueueMessage($"@{whisper.PlayerName} I only have {SellAssistant.CompassCounts[whisper.Item.ModName]} {whisper.Item.Name} left, still interested?");
-                        }
-                        else
-                        {
-                            Chat.QueueMessage($"@{whisper.PlayerName} I only have {SellAssistant.CompassCounts[whisper.Item.ModName]} {whisper.Item.Name} left, still interested?");
-                        }
-                        whisper.HasSentPartial = true;
+                        action.Invoke();
                     }
                 }
 
-                if (whisper.Item.Status == FullfillmentStatus.NotAvailable)
-                {
-                    if (ImGui.Button("Sold"))
-                    {
-                        Chat.QueueMessage($"@{whisper.PlayerName} Sorry, all my \"{whisper.Item.Name}\" are sold");
-                        whisper.Hidden = true;
-                    }
-                }
-
-                if (whisper.Item.Status != FullfillmentStatus.NotAvailable)
-                {
-                    GrayButton(SellAssistant.IsAnyRoutineRunning || whisper.HasExtracted);
-                    if (ImGui.Button("Extract"))
-                    {
-                        SellAssistant.AddToExtractionQueue(whisper.Items.Select(x => (x.ModName, x.Quantity)).ToList());
-                        whisper.HasExtracted = true;
-                    }
-                    GrayButtonEnd(SellAssistant.IsAnyRoutineRunning || whisper.HasExtracted);
-                }
-
-
-                GrayButton(whisper.HasTraded);
-                if (ImGui.Button("Trade"))
-                {
-                    Chat.QueueMessage("/tradewith " + whisper.PlayerName);
-                    whisper.HasTraded = true;
-                }
-                if (ImGui.Button("Trade NEW"))
-                {
-                    TradeManager.AddTradeRequest(new TradeRequest
-                    {
-                        PlayerName = whisper.PlayerName,
-                        ExpectedValue = whisper.TotalPrice,
-                    });
-                    whisper.HasTraded = true;
-                }
-                GrayButtonEnd(whisper.HasTraded);
-
-                if (ImGui.Button("Kick"))
-                {
-                    Chat.QueueMessage(new string[] {
-                            "/kick " + whisper.PlayerName,
-                            $"@{whisper.PlayerName} ty"
-                        });
-                    whisper.Hidden = true;
-                }
-
-                ImGui.SameLine();
-                if (ImGui.Button("X"))
-                {
-                    whisper.Hidden = true;
-                }
 
                 ImGui.PopID();
             }

@@ -1,7 +1,6 @@
-using System;
 using System.Collections.Generic;
+using System.Data;
 using System.Linq;
-using System.Threading.Tasks;
 using ExileCore.PoEMemory.Components;
 using ExileCore.PoEMemory.MemoryObjects;
 using static ExileCore.PoEMemory.MemoryObjects.ServerInventory;
@@ -26,16 +25,21 @@ public static class Inventory
     }
   }
 
-  public static InventSlotItem[] GetByName(string name)
+  public static InventSlotItem[] GetByName(params string[] names)
   {
     var items = new List<InventSlotItem>();
+    var nameSet = new HashSet<string>(names);
+
     foreach (var item in InventoryItems)
     {
-      if (item.Item != null && item.Item.GetComponent<Base>()?.Name == name)
+      var baseComponent = item.Item?.GetComponent<Base>();
+      if (baseComponent != null && nameSet.Contains(baseComponent.Name))
       {
         items.Add(item);
       }
     }
+
     return items.OrderBy(x => x.PosX).ThenBy(x => x.PosY).ToArray();
   }
+
 }
