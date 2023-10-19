@@ -20,9 +20,17 @@ public static class WhisperManager
     public static List<Whisper> Whispers = Chat.GetPastMessages("@From", Whisper.WhisperPatterns.Select(x => new Regex(x.Item1)).ToList(), 3).Select(Whisper.Create).Where(x => x != null).ToList();
     // public static List<Whisper> Whispers = new List<Whisper>
     // {
-    //     Whisper.Create("@From _______test___________________: wtb 10 chayula"),
+    //     Whisper.Create("@From _______test___________________: wtb 900 chayula"),
     //     Whisper.Create("@From _____Test_____________: WTB 3 Strongbox Enraged 274c each, 4 Beyond 74c each. Total 3828c (16 div + 100c)"),
     // }.Where(x => x != null).ToList();//.Select(x => { x.InArea = true; return x; }).ToList();
+
+    public static List<Whisper> ActiveWhispers
+    {
+        get
+        {
+            return Whispers.Where(x => !x.Hidden).ToList();
+        }
+    }
 
     private static string chatPointer = Chat.GetPointer();
     private static ThrottledAction _chatUpdate = new ThrottledAction(TimeSpan.FromMilliseconds(500), () =>
@@ -34,7 +42,12 @@ public static class WhisperManager
                 var whisper = Whisper.Create(message);
                 if (whisper != null)
                 {
-                    Whispers.Add(whisper);
+                    ExecuteOnNextTick(() =>
+                    {
+                        Whispers.Add(whisper);
+                        if (ActiveWhispers.Count == 1)
+                            HotKeySelected = whisper.Uuid;
+                    });
                 }
             }
 
@@ -71,10 +84,19 @@ public static class WhisperManager
 
     private static bool _hotKeysRegistered = false;
     private static Dictionary<int, HotkeyNode> _hotkeys = new Dictionary<int, HotkeyNode>();
-    private static string _hotKeySelected = "";
+    public static string HotKeySelected = "";
 
+    private static List<Action> _executeOnNextTick = new List<Action>();
+    public static void ExecuteOnNextTick(Action action)
+    {
+        lock (_executeOnNextTick)
+            _executeOnNextTick.Add(action);
+    }
     public static void Tick()
     {
+        _executeOnNextTick.ForEach(x => x.Invoke());
+        _executeOnNextTick.Clear();
+
         _chatUpdate.Run();
 
         if (!_hotKeysRegistered)
@@ -85,27 +107,71 @@ public static class WhisperManager
                 Input.RegisterKey(key);
                 _hotkeys[i] = new HotkeyNode(Util.MapIndexToNumPad(i));
             }
+            Input.RegisterKey(System.Windows.Forms.Keys.Down);
+            _hotkeys[10] = new HotkeyNode(System.Windows.Forms.Keys.Down);
+            Input.RegisterKey(System.Windows.Forms.Keys.Up);
+            _hotkeys[11] = new HotkeyNode(System.Windows.Forms.Keys.Up);
             _hotKeysRegistered = true;
         }
 
-        var selected = Whispers.Find(x => x.Uuid == _hotKeySelected);
+        var selected = Whispers.Find(x => x.Uuid == HotKeySelected);
         if (selected != null && selected.Hidden)
         {
-            _hotKeySelected = "";
+            HotKeySelected = "";
             return;
         }
 
-        if (_hotkeys[9].PressedOnce())
-            _hotKeySelected = "";
+        if (SellAssistant.IsAmountFocussed)
+            return;
 
-        var whispers = Whispers.Where(x => !x.Hidden).ToList();
+        if (_hotkeys[0].PressedOnce())
+        {
+            if (selected != null && selected.ButtonSelection != ButtonSelection.None)
+                selected.ButtonSelection = ButtonSelection.None;
+            else if (HotKeySelected == "" && ActiveWhispers.Count > 0)
+                HotKeySelected = ActiveWhispers[0].Uuid;
+            else
+                HotKeySelected = "";
+        }
+        if (_hotkeys[10].PressedOnce())
+        {
+            // down button pressed, if selected is null, select first whisper, otherwise select next whisper
+            if (selected == null)
+            {
+                if (ActiveWhispers.Count > 0)
+                    HotKeySelected = ActiveWhispers[0].Uuid;
+                else
+                {
+                    var index = ActiveWhispers.IndexOf(selected);
+                    if (index < ActiveWhispers.Count - 1)
+                        HotKeySelected = ActiveWhispers[index + 1].Uuid;
+                }
+            }
+        }
+        if (_hotkeys[11].PressedOnce())
+        {
+            // up button pressed, if selected is null, select last whisper, otherwise select previous whisper
+            if (selected == null)
+            {
+                if (ActiveWhispers.Count > 0)
+                    HotKeySelected = ActiveWhispers[ActiveWhispers.Count - 1].Uuid;
+                else
+                {
+                    var index = ActiveWhispers.IndexOf(selected);
+                    if (index > 0)
+                        HotKeySelected = ActiveWhispers[index - 1].Uuid;
+                }
+            }
+        }
+
+        var whispers = ActiveWhispers;
         if (selected == null)
         {
             for (int i = 1; i <= whispers.Count; i++)
             {
                 if (_hotkeys[i].PressedOnce())
                 {
-                    _hotKeySelected = whispers[i - 1].Uuid;
+                    HotKeySelected = whispers[i - 1].Uuid;
                     break;
                 }
             }
@@ -131,6 +197,29 @@ public static class WhisperManager
 
     public static void Render()
     {
+        if (ImGui.BeginTable("WhisperLastChatterAddTable", 3, ImGuiTableFlags.Borders | ImGuiTableFlags.NoSavedSettings))
+        {
+            ImGui.TableNextRow();
+            for (int i = 0; i < Chat.LastChatUsers.Count; i++)
+            {
+                ImGui.TableNextColumn();
+                var username = Chat.LastChatUsers[i];
+                if (ImGui.Selectable(username, false))
+                {
+                    _executeOnNextTick.Add(() =>
+                    {
+                        Whispers.Add(new Whisper
+                        {
+                            Uuid = Guid.NewGuid().ToString(),
+                            PlayerName = username,
+                        });
+                    });
+
+                }
+            }
+            ImGui.EndTable();
+        }
+
         float tableWidth = ImGui.GetContentRegionAvail().X;
         if (ImGui.BeginTable("WhisperManagerTable", 6, ImGuiTableFlags.Borders | ImGuiTableFlags.RowBg | ImGuiTableFlags.NoSavedSettings))
         {
@@ -148,7 +237,7 @@ public static class WhisperManager
                 {
                     float buttonHeight = ImGui.GetFontSize() + ImGui.GetStyle().FramePadding.Y;
                     if (ImGui.Button("Clear", new Vector2(0, buttonHeight)))  // Width 0 means auto-sizing to fit text
-                        ClearWhispers();
+                        _executeOnNextTick.Add(() => ClearWhispers());
                 }
                 else
                 {
@@ -156,7 +245,7 @@ public static class WhisperManager
                 }
             }
 
-            var whispers = Whispers.Where(x => !x.Hidden).ToList();
+            var whispers = ActiveWhispers;
             for (int i = 0; i < whispers.Count; i++)
             {
                 var whisper = whispers[i];
@@ -176,10 +265,24 @@ public static class WhisperManager
                 whisper.Items.ForEach(x =>
                 {
                     ImGui.PushID(i.ToString() + x.Name);
-                    if (ImGui.Button("S"))
+                    float buttonHeight = ImGui.GetFontSize();
+                    if (ImGui.Button("S", new Vector2(0, buttonHeight)))
                     {
-                        SellAssistant.selectedAmount = x.Quantity;
-                        SellAssistant.selectedMod = x.ModName;
+                        _executeOnNextTick.Add(() =>
+                        {
+                            HotKeySelected = whisper.Uuid;
+                        });
+                        SellAssistant.ExecuteOnNextTick(() =>
+                        {
+                            SellAssistant.selectedFocus = true;
+                            SellAssistant.selectedAmount = x.Quantity;
+                            SellAssistant.selectedMod = x.ModName;
+                        });
+                    }
+                    ImGui.SameLine();
+                    if (ImGui.Button("X", new Vector2(0, buttonHeight)))
+                    {
+                        _executeOnNextTick.Add(() => whisper.RemoveItem(x.Uuid));
                     }
                     ImGui.SameLine();
                     ImGui.Text(x.Name);
@@ -195,26 +298,30 @@ public static class WhisperManager
                     ImGui.Text("-----------------");
                     ImGui.Text(whisper.Price);
                 }
-                ImGui.TableNextColumn();
-                var status = whisper.Item.Status;
 
-                // display red or green or orange
-                if (status == FullfillmentStatus.Available)
-                    ImGui.TextColored(new System.Numerics.Vector4(0, 1, 0, 1), "Ok");
-                else if (status == FullfillmentStatus.NotEnough)
-                    ImGui.TextColored(new System.Numerics.Vector4(1, 0.5f, 0, 1), "Partial");
-                else
-                    ImGui.TextColored(new System.Numerics.Vector4(1, 0, 0, 1), "N/A");
+                ImGui.TableNextColumn();
+                whisper.Items.ForEach(x =>
+                {
+                    var status = x.Status;
+
+                    // display red or green or orange
+                    if (status == FullfillmentStatus.Available)
+                        ImGui.TextColored(new System.Numerics.Vector4(0, 1, 0, 1), "Ok");
+                    else if (status == FullfillmentStatus.NotEnough)
+                        ImGui.TextColored(new System.Numerics.Vector4(1, 0.5f, 0, 1), "Partial");
+                    else
+                        ImGui.TextColored(new System.Numerics.Vector4(1, 0, 0, 1), "N/A");
+                });
 
                 ImGui.TableNextColumn();
 
                 float buttonWidth = ImGui.GetContentRegionAvail().X;
-                var isSelected = whisper.Uuid == _hotKeySelected;
+                var isSelected = whisper.Uuid == HotKeySelected;
                 foreach (var (key, label, action) in whisper.GetButtonsForWhisper())
                 {
                     if (ImGui.Button(isSelected ? $"[{Util.MapNumPadToIndex(key)}] {label}" : label, new Vector2(buttonWidth, 0)))
                     {
-                        action.Invoke();
+                        _executeOnNextTick.Add(action);
                     }
                 }
 
@@ -222,9 +329,9 @@ public static class WhisperManager
                 ImGui.PopID();
             }
 
+
             ImGui.EndTable();
         }
-
     }
 
     private static void GrayButton(bool condition)

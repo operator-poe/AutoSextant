@@ -11,6 +11,7 @@ public class WhisperItem
     public string Name { get; set; }
     public string ModName { get; set; }
     public int Quantity { get; set; }
+    public string Uuid { get; set; } = Guid.NewGuid().ToString();
 
     public FullfillmentStatus Status
     {
@@ -46,6 +47,13 @@ public class WhisperItem
         }
     }
 }
+
+public enum ButtonSelection
+{
+    None,
+    PreTrade,
+    Trade,
+}
 public class Whisper
 {
     public static readonly List<(string, (int, int))> WhisperPatterns = new List<(string, (int, int))>{
@@ -70,13 +78,6 @@ public class Whisper
             return Items.Count > 1;
         }
     }
-    public WhisperItem Item
-    {
-        get
-        {
-            return Items[0];
-        }
-    }
 
     public bool Hidden { get; set; } = false;
 
@@ -86,6 +87,8 @@ public class Whisper
     public bool HasSentPartial { get; set; } = false;
     public bool HasExtracted { get; set; } = false;
     public bool HasTraded { get; set; } = false;
+
+    public ButtonSelection ButtonSelection = ButtonSelection.None;
 
     public float TotalPrice
     {
@@ -182,126 +185,176 @@ public class Whisper
         return null;
     }
 
+    public void RemoveItem(string uuid)
+    {
+        lock (Items)
+            Items.RemoveAll(x => x.Uuid == uuid);
+    }
+
+    public void AddItem(WhisperItem item)
+    {
+        lock (Items)
+        {
+            // replace item if it already exists
+            var existingItem = Items.Find(x => x.ModName == item.ModName);
+            if (existingItem != null)
+                existingItem.Quantity = item.Quantity;
+            else
+                Items.Add(item);
+        }
+    }
+
 
     public List<(Keys, string, Action)> GetButtonsForWhisper()
     {
         var buttons = new List<(Keys, string, Action)>();
 
-        int index = 0;
-        Keys key;
-        if (
-            !HasSentInvite &&
-            (
-                Item.Status == FullfillmentStatus.Available ||
-                (Item.Status == FullfillmentStatus.NotEnough && HasSentPartial)
-            )
-        )
+        if (ButtonSelection == ButtonSelection.None)
         {
-            key = Util.MapIndexToNumPad(++index);
-            buttons.Add((key, $"Invite", () =>
+            buttons.Add((Keys.NumPad1, $"PreTrade", () =>
             {
-                HasSentInvite = true;
-                Chat.QueueMessage("/invite " + PlayerName);
+                ButtonSelection = ButtonSelection.PreTrade;
             }
             ));
         }
-        else if (Item.Status == FullfillmentStatus.NotEnough && !HasSentPartial)
+        if (ButtonSelection == ButtonSelection.PreTrade)
         {
-            key = Util.MapIndexToNumPad(++index);
-            buttons.Add((key, $"Partial", () =>
+            buttons.Add((Keys.NumPad1, $"Invite", () =>
             {
-                if (SellAssistant.CurrentReport != null)
+                HasSentInvite = true;
+                Chat.QueueMessage("/invite " + PlayerName);
+                ButtonSelection = ButtonSelection.None;
+            }
+            ));
+            if (Items.Count == 1 && Items[0].Status == FullfillmentStatus.NotEnough)
+            {
+                var Item = Items[0];
+                buttons.Add((Keys.NumPad2, $"Partial", new Action(() =>
                 {
-                    var priceString = SellAssistant.CurrentReport.AmountToString(Item.Name, SellAssistant.CompassCounts[Item.ModName]);
-                    if (priceString != null)
-                        Chat.QueueMessage($"@{PlayerName} {SellAssistant.CompassCounts[Item.ModName]} {Item.Name} left for {priceString}, still interested?");
+                    var count = SellAssistant.CompassCounts[Item.ModName];
+                    if (SellAssistant.CurrentReport != null)
+                    {
+                        var priceString = SellAssistant.CurrentReport.AmountToString(Item.Name, count);
+                        if (priceString != null)
+                            Chat.QueueMessage($"@{PlayerName} {count} {Item.Name} left for {priceString}, still interested?");
+                        else
+                            Chat.QueueMessage($"@{PlayerName} I only have {count} {Item.Name} left, still interested?");
+                    }
                     else
-                        Chat.QueueMessage($"@{PlayerName} I only have {SellAssistant.CompassCounts[Item.ModName]} {Item.Name} left, still interested?");
-                }
-                else
+                    {
+                        Chat.QueueMessage($"@{PlayerName} I only have {count} {Item.Name} left, still interested?");
+                    }
+                    HasSentPartial = true;
+                    Item.Quantity = count;
+                    ButtonSelection = ButtonSelection.None;
+                })
+                ));
+            }
+
+            if (Items.Any(x => x.Status == FullfillmentStatus.NotAvailable))
+            {
+                buttons.Add((Keys.NumPad3, $"Sold", new Action(() =>
                 {
-                    Chat.QueueMessage($"@{PlayerName} I only have {SellAssistant.CompassCounts[Item.ModName]} {Item.Name} left, still interested?");
+                    Chat.QueueMessage($"@{PlayerName} Sorry, all my \"{Items.Find(x => x.Status == FullfillmentStatus.NotAvailable)?.Name}\" are sold");
+                    Hidden = true;
+                })
+                ));
+            }
+            buttons.Add((Keys.NumPad4, $"Whisper Total", new Action(() =>
+            {
+                Chat.QueueMessage($"@{PlayerName} That's {Util.FormatChaosPrice(Items.Sum(x => x.Price), SellAssistant.CurrentReport.DivinePrice)} in total");
+                ButtonSelection = ButtonSelection.None;
+            }
+            )));
+            buttons.Add((Keys.NumPad5, $"Back", new Action(() =>
+            {
+                ButtonSelection = ButtonSelection.None;
+            }
+            )));
+        }
+
+        if (ButtonSelection == ButtonSelection.None)
+        {
+            if (!Items.Any(x => x.Status == FullfillmentStatus.NotAvailable))
+            {
+                buttons.Add((Keys.NumPad2, $"Extract", () =>
+                {
+                    SellAssistant.AddToExtractionQueue(Items.Select(x => (x.ModName, x.Quantity)).ToList());
+                    HasExtracted = true;
                 }
-                HasSentPartial = true;
+                ));
+            }
+
+            buttons.Add((Keys.NumPad3, $"Trade", () =>
+            {
+                ButtonSelection = ButtonSelection.Trade;
             }
             ));
         }
 
-        if (Item.Status == FullfillmentStatus.NotAvailable)
+
+
+        if (ButtonSelection == ButtonSelection.Trade)
         {
-            key = Util.MapIndexToNumPad(++index);
-            buttons.Add((key, $"Sold", () =>
+            buttons.Add((Keys.NumPad1, $"No Value", () =>
             {
-                Chat.QueueMessage($"@{PlayerName} Sorry, all my \"{Item.Name}\" are sold");
+                TradeManager.AddTradeRequest(new TradeRequest
+                {
+                    PlayerName = PlayerName,
+                    ExpectedValue = 0
+                });
+                HasTraded = true;
+                ButtonSelection = ButtonSelection.None;
+            }
+            ));
+            buttons.Add((Keys.NumPad2, $"Regular", () =>
+            {
+                TradeManager.AddTradeRequest(new TradeRequest
+                {
+                    PlayerName = PlayerName,
+                    ExpectedValue = TotalPrice,
+                });
+                HasTraded = true;
+                ButtonSelection = ButtonSelection.None;
+            }
+            ));
+            buttons.Add((Keys.NumPad3, $"With Change", () =>
+            {
+                TradeManager.AddTradeRequest(new TradeRequest
+                {
+                    PlayerName = PlayerName,
+                    ExpectedValue = TotalPrice,
+                    WithChange = true
+                });
+                HasTraded = true;
+                ButtonSelection = ButtonSelection.None;
+            }
+            ));
+            buttons.Add((Keys.NumPad5, $"Back", new Action(() =>
+            {
+                ButtonSelection = ButtonSelection.None;
+            }
+            )));
+        }
+
+        if (ButtonSelection == ButtonSelection.None)
+        {
+            buttons.Add((Keys.NumPad4, $"Kick", () =>
+            {
+                Chat.QueueMessage(new string[] {
+                            "/kick " + PlayerName,
+                            $"@{PlayerName} ty"
+                            });
+                Hidden = true;
+            }
+            ));
+
+            buttons.Add((Keys.NumPad5, "X", () =>
+            {
                 Hidden = true;
             }
             ));
         }
-
-        if (Item.Status != FullfillmentStatus.NotAvailable)
-        {
-            key = Util.MapIndexToNumPad(++index);
-            buttons.Add((key, $"Extract", () =>
-            {
-                SellAssistant.AddToExtractionQueue(Items.Select(x => (x.ModName, x.Quantity)).ToList());
-                HasExtracted = true;
-            }
-            ));
-        }
-
-
-        key = Util.MapIndexToNumPad(++index);
-        buttons.Add((key, $"Trade", () =>
-        {
-            TradeManager.AddTradeRequest(new TradeRequest
-            {
-                PlayerName = PlayerName,
-                ExpectedValue = 0
-            });
-            HasTraded = true;
-        }
-        ));
-        key = Util.MapIndexToNumPad(++index);
-        buttons.Add((key, $"Trade NEW", () =>
-        {
-            TradeManager.AddTradeRequest(new TradeRequest
-            {
-                PlayerName = PlayerName,
-                ExpectedValue = TotalPrice,
-            });
-            HasTraded = true;
-        }
-        ));
-        key = Util.MapIndexToNumPad(++index);
-        buttons.Add((key, $"Trade (Change)", () =>
-        {
-            TradeManager.AddTradeRequest(new TradeRequest
-            {
-                PlayerName = PlayerName,
-                ExpectedValue = TotalPrice,
-                WithChange = true
-            });
-            HasTraded = true;
-        }
-        ));
-
-        key = Util.MapIndexToNumPad(++index);
-        buttons.Add((key, $"Kick", () =>
-        {
-            Chat.QueueMessage(new string[] {
-                            "/kick " + PlayerName,
-                            $"@{PlayerName} ty"
-                        });
-            Hidden = true;
-        }
-        ));
-
-        buttons.Add((Keys.NumPad0, "X", () =>
-        {
-            Hidden = true;
-        }
-        ));
-
         return buttons;
     }
 }

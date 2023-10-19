@@ -108,11 +108,7 @@ public class PoeStackReport
         {
             float price = Prices[name];
             float total = price * amount;
-            if (total < DivinePrice)
-                return $"{total.ToString("0.0")}c";
-            int divines = (int)(total / DivinePrice);
-            float chaos = total % DivinePrice;
-            return $"{divines} div + {chaos}c";
+            return Util.FormatChaosPrice(total, DivinePrice);
         }
         else
         {

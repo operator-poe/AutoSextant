@@ -22,7 +22,14 @@ public static class SellAssistant
     }
     public static string selectedMod = "";
     public static int selectedAmount = 1;
+    public static bool selectedFocus = false;
     public static string selectedFilter = "";
+    private static List<Action> _executeOnNextTick = new List<Action>();
+    public static void ExecuteOnNextTick(Action action)
+    {
+        lock (_executeOnNextTick)
+            _executeOnNextTick.Add(action);
+    }
 
     private static PoeStackReport _currentReport = null;
     private static DateTime _lastReportRefresh = DateTime.MinValue;
@@ -125,7 +132,8 @@ public static class SellAssistant
 
     private static void RefreshTable()
     {
-        CompassCounts.Clear();
+        lock (CompassCounts)
+            CompassCounts.Clear();
 
         var dumpTabs = I.Settings.DumpTabs.Value.Split(',').Select(x => x.Trim()).ToList();
         var tabs = dumpTabs.Select(x => new NStash.StashTab(x)).ToList();
@@ -234,6 +242,8 @@ public static class SellAssistant
 
     public static void Tick()
     {
+        _executeOnNextTick.ForEach(x => x.Invoke());
+        _executeOnNextTick.Clear();
         if (!_enabled)
         {
             return;
@@ -253,9 +263,21 @@ public static class SellAssistant
 
     public static void SelectAndTakeFromStash(string mod, int amount)
     {
-        selectedMod = mod;
-        selectedAmount = amount;
-        Core.ParallelRunner.Run(new Coroutine(TakeFromStash(), AutoSextant.Instance, _sellAssistantTakeFromStashCoroutineName));
+        ExecuteOnNextTick(() =>
+        {
+            selectedMod = mod;
+            selectedAmount = amount;
+            Core.ParallelRunner.Run(new Coroutine(TakeFromStash(), AutoSextant.Instance, _sellAssistantTakeFromStashCoroutineName));
+        });
+    }
+
+    private static bool _isAmountFocused = false;
+    public static bool IsAmountFocussed
+    {
+        get
+        {
+            return _isAmountFocused;
+        }
     }
 
     public static void Render()
@@ -266,9 +288,6 @@ public static class SellAssistant
         }
         TradeManager.Render();
         var show = _enabled;
-
-        // ImGui.SetNextWindowPos(_windowPos.Item1);
-        // ImGui.SetNextWindowSize(_windowPos.Item2);
 
         ImGui.Begin("AutoSextant SellAssistant", ref show);
         _enabled = show;
@@ -304,16 +323,68 @@ public static class SellAssistant
                 ImGui.Text($" | {priceString}");
             }
 
+            if (selectedFocus)
+            {
+                ImGui.SetKeyboardFocusHere();
+                selectedFocus = false;
+            }
             ImGui.InputInt("Enter Amount", ref selectedAmount, 1);
+            if (!_isAmountFocused && ImGui.IsItemFocused())
+                _isAmountFocused = true;
+            else if (_isAmountFocused && !ImGui.IsItemFocused())
+                _isAmountFocused = false;
+
             ImGui.SliderInt("Select Amount", ref selectedAmount, 1, CompassCounts[selectedMod]);
             if (ImGui.Button("Take from stash"))
             {
-                Core.ParallelRunner.Run(new Coroutine(TakeFromStash(), AutoSextant.Instance, _sellAssistantTakeFromStashCoroutineName));
+                ExecuteOnNextTick(() => Core.ParallelRunner.Run(new Coroutine(TakeFromStash(), AutoSextant.Instance, _sellAssistantTakeFromStashCoroutineName)));
             }
             ImGui.SameLine();
             if (ImGui.Button("Highlight"))
             {
-                Core.ParallelRunner.Run(new Coroutine(Highlight(), AutoSextant.Instance, _sellAssistantTakeFromStashCoroutineName));
+                ExecuteOnNextTick(() => Core.ParallelRunner.Run(new Coroutine(Highlight(), AutoSextant.Instance, _sellAssistantTakeFromStashCoroutineName)));
+            }
+            ImGui.SameLine();
+            ImGui.Text("Add to: ");
+            ImGui.SameLine();
+            var whispers = WhisperManager.ActiveWhispers;
+            for (int i = 0; i < whispers.Count && i < 3; i++)
+            {
+                var whisper = whispers[i];
+                if (ImGui.Button((i + 1).ToString()))
+                {
+                    ExecuteOnNextTick(() =>
+                    {
+                        WhisperManager.ExecuteOnNextTick(() =>
+                        {
+                            whisper.AddItem(new WhisperItem
+                            {
+                                Name = CompassList.ModNameToPrice[selectedMod],
+                                ModName = selectedMod,
+                                Quantity = selectedAmount
+                            });
+                        });
+                    });
+                }
+                ImGui.SameLine();
+            }
+            if (WhisperManager.HotKeySelected != "")
+            {
+                if (ImGui.Button("Selected"))
+                {
+                    ExecuteOnNextTick(() =>
+                    {
+                        WhisperManager.ExecuteOnNextTick(() =>
+                        {
+                            WhisperManager.Whispers.Find(x => x.Uuid == WhisperManager.HotKeySelected).AddItem(new WhisperItem
+                            {
+                                Name = CompassList.ModNameToPrice[selectedMod],
+                                ModName = selectedMod,
+                                Quantity = selectedAmount
+                            });
+                        });
+                    });
+                }
             }
         }
 
@@ -329,10 +400,10 @@ public static class SellAssistant
         ImGui.InputText("Filter", ref selectedFilter, 50);
         ImGui.SameLine();
         if (ImGui.Button("C"))
-            selectedFilter = "";
+            ExecuteOnNextTick(() => { selectedFilter = ""; });
         ImGui.SameLine();
         if (ImGui.Button("R"))
-            Enable();
+            ExecuteOnNextTick(Enable);
         ImGui.Spacing();
 
         float tableWidth = ImGui.GetContentRegionAvail().X;
@@ -361,8 +432,12 @@ public static class SellAssistant
                 var selected = selectedMod == mod;
                 if (ImGui.Selectable(tft, ref selected, ImGuiSelectableFlags.SpanAllColumns))
                 {
-                    selectedMod = mod;
-                    selectedAmount = CompassCounts[mod];
+                    ExecuteOnNextTick(() =>
+                    {
+                        selectedMod = mod;
+                        selectedAmount = CompassCounts[mod];
+                        selectedFocus = true;
+                    });
                 }
 
                 ImGui.TableNextColumn();

@@ -21,6 +21,35 @@ public class ChatPointer
 public static class Chat
 {
     public static Dictionary<string, ChatPointer> _pointers = new Dictionary<string, ChatPointer>();
+    public static List<string> LastChatUsers = new List<string>();
+
+    private static ThrottledAction _updateLastChatUsers = new ThrottledAction(TimeSpan.FromMilliseconds(1000), () =>
+    {
+        HashSet<string> uniqueNames = new HashSet<string>();
+        List<string> lastThreeUniqueNames = new List<string>(3); // Allocate size
+        List<string> Messages = ChatMessages.ToArray().ToList();
+        int chatCount = Messages.Count;
+
+        for (int i = chatCount - 1; i >= 0 && lastThreeUniqueNames.Count < 3; i--)
+        {
+            string entry = Messages[i];
+            if (entry.Length <= 5 || entry[0] != '@' || entry[1] != 'F') continue;
+
+            int indexColon = entry.IndexOf(':');
+            int indexSpace = entry.LastIndexOf(' ', indexColon);
+
+            if (indexSpace > 0 && indexColon > indexSpace)
+            {
+                string name = entry.Substring(indexSpace + 1, indexColon - indexSpace - 1);
+                if (uniqueNames.Add(name))
+                {
+                    lastThreeUniqueNames.Add(name);
+                }
+            }
+        }
+
+        LastChatUsers = lastThreeUniqueNames;
+    });
     public static ChatPanel Panel
     {
         get
@@ -163,6 +192,7 @@ public static class Chat
 
     public static void Tick()
     {
+        _updateLastChatUsers.Run();
         if (MessageQueue.Count > 0 && Core.ParallelRunner.FindByName(_sendChatCoroutineName) == null)
         {
             string message = MessageQueue[0];

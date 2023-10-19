@@ -83,8 +83,6 @@ public static class CompassList
       {"Mortal/Sacrifice Fragment", "MapAtlasUniqueStrongboxChanceWithExtraVaalPacks3_"},
       {"Possessed Rusted Scarab", "MapAtlasTormentedBetrayerAndScarabDropChance"},
       {"Vaal Soul on Kill", "MapAtlasVaalSoulsOnKillAndExtraVaalPacks3"},
-      {"Winged Scarab", "MapAtlasTormentedBetrayerAndWingedScarabDropChanceMaven"},
-      {"Strongbox Enraged 600%", "MapAtlasStrongboxMonstersEnrageAndDropsMaven___"},
     };
   public static Dictionary<string, string> ModNameToPrice = PriceToModName.ToDictionary(x => x.Value, x => x.Key);
   public static Dictionary<string, CompassPrice> Prices = new Dictionary<string, CompassPrice>();

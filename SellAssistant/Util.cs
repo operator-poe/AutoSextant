@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
@@ -146,19 +147,14 @@ public static class Util
         return result;
     }
 
-    [DllImport("user32.dll")]
-    public static extern short VkKeyScan(char ch);
-
-    public static Keys KeyCodeSlash = (Keys)(int)(byte)(VkKeyScan('/') & 0xFF);
-
     public static string FormatChaosPrice(float value, float? DivinePrice = null)
     {
         if (DivinePrice == null || DivinePrice <= 0 || Math.Abs(value) < DivinePrice)
-            return $"{value.ToString("0.0")}c";
+            return $"{value.ToString("0.0", CultureInfo.InvariantCulture)}c";
 
         int divines = (int)(value / DivinePrice);
         float chaos = value % DivinePrice ?? 0;
-        return $"{divines} div, {chaos.ToString("0.0")}c";
+        return $"{divines} div, {chaos.ToString("0.0", CultureInfo.InvariantCulture)}c";
     }
 
     public static string FormatTimeSpan(TimeSpan age)
