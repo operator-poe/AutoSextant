@@ -279,20 +279,25 @@ public class AutoSextant : BaseSettingsPlugin<AutoSextantSettings>
         yield return new WaitFunctionTimed(() => GameController.IngameState.IngameUi.InventoryPanel != null && GameController.IngameState.IngameUi.InventoryPanel.IsVisible, true, 1000, "Inventory not opened");
     }
 
-    public IEnumerator Dump()
+    public void TriggerDump(string specificMod = null)
+    {
+        Core.ParallelRunner.Run(new Coroutine(Dump(specificMod), this, _dumpCoroutineName));
+    }
+
+    public IEnumerator Dump(string specificMod = null)
     {
         yield return EnsureStash();
 
         var dumpTabs = Settings.DumpTabs.Value.Split(',');
 
-        while (Inventory.TotalChargedCompasses > 0)
+        while ((specificMod == null ? Inventory.TotalChargedCompasses : NInventory.Inventory.GetByModName(specificMod).Count()) > 0)
         {
             foreach (var tabName in dumpTabs)
             {
                 if (Stock.Tabs.ContainsKey(tabName) && Stock.Tabs[tabName].Values.Sum() >= 576)
                     continue;
 
-                var items = Inventory.ChargedCompasses;
+                var items = specificMod == null ? Inventory.ChargedCompasses : NInventory.Inventory.GetByModName(specificMod).Select(x => new Item(x)).ToArray();
                 var tab = Stash.GetStashTabIndexForName(tabName);
                 yield return NStash.Stash.SelectTab(tab);
                 yield return new WaitTime(30);

@@ -28,8 +28,11 @@ public class TradeRequest
 {
     public string PlayerName { get; set; }
     public float ExpectedValue { get; set; } = 0;
+    public float ReceivedValue { get; set; } = 0;
     public bool WithChange { get; set; } = false;
     public TradeRequestStatus Status { get; set; } = TradeRequestStatus.None;
+    public Action<TradeRequest> Callback { get; set; } = null;
+    public bool CallbackInvoked { get; set; } = false;
 }
 
 public static class TradeManager
@@ -69,8 +72,12 @@ public static class TradeManager
             lock (TradeQueue)
                 TradeQueue.Clear();
         if (ActiveTrade != null)
+        {
+            if (ActiveTrade.Callback != null && !ActiveTrade.CallbackInvoked)
+                ActiveTrade.Callback?.Invoke(ActiveTrade);
             lock (ActiveTrade)
                 ActiveTrade = null;
+        }
         if (chatPointer != null)
             Chat.RemovePointer(chatPointer);
         if (chatPointer != null)
@@ -139,6 +146,7 @@ public static class TradeManager
                             break;
                         case TradeRequestStatus.Accepted:
                             Log.Debug($"Detected that trade with {ActiveTrade.PlayerName} has been accepted, stashing currency");
+                            ActiveTrade.Callback?.Invoke(ActiveTrade);
                             Core.ParallelRunner.Run(new Coroutine(StashCurrency(), AutoSextant.Instance, _tradeCoroutineName));
                             break;
                         case TradeRequestStatus.Cancelled:
@@ -395,7 +403,10 @@ public static class TradeManager
                 continue;
             yield return new WaitTime(50);
             if (!TradeWindow.SellerAccepted)
+            {
+                ActiveTrade.ReceivedValue = TotalChaosValue;
                 yield return Input.ClickElement(TradeWindow.AcceptButton.GetClientRect().Center);
+            }
             yield return new WaitTime(50);
         }
     }

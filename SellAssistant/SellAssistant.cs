@@ -56,7 +56,7 @@ public static class SellAssistant
 
     public static readonly string _sellAssistantInitCoroutineName = "AutoSextant.SellAssistant.SellAssistant.Init";
     public static readonly string _sellAssistantTakeFromStashCoroutineName = "AutoSextant.SellAssistant.SellAssistant.TakeFromStash";
-    private static List<(string, int)> ExtractionQueue = new List<(string, int)>();
+    private static List<(string, int, Action)> ExtractionQueue = new List<(string, int, Action)>();
     public static bool IsAnyRoutineRunning
     {
         get
@@ -78,11 +78,11 @@ public static class SellAssistant
         TradeManager.StopAllRoutines();
     }
 
-    public static void AddToExtractionQueue(string mod, int amount)
+    public static void AddToExtractionQueue(string mod, int amount, Action callback = null)
     {
-        ExtractionQueue.Add((mod, amount));
+        ExtractionQueue.Add((mod, amount, callback));
     }
-    public static void AddToExtractionQueue(List<(string, int)> mods)
+    public static void AddToExtractionQueue(List<(string, int, Action)> mods)
     {
         ExtractionQueue.AddRange(mods);
     }
@@ -144,7 +144,7 @@ public static class SellAssistant
         Input.KeyUp(Keys.ControlKey);
     }
 
-    public static IEnumerator TakeFromStash(string mod = null, int? amount = null)
+    public static IEnumerator TakeFromStash(string mod = null, int? amount = null, Action callback = null)
     {
         yield return Util.ForceFocus();
         yield return AutoSextant.Instance.EnsureStash();
@@ -195,6 +195,7 @@ public static class SellAssistant
         Stock.RunRefresh(() => RefreshTable());
 
         Input.RestorePosition();
+        callback?.Invoke();
     }
 
     public static void Tick()
@@ -212,9 +213,9 @@ public static class SellAssistant
 
         if (ExtractionQueue.Count > 0 && Core.ParallelRunner.FindByName(_sellAssistantTakeFromStashCoroutineName) == null)
         {
-            var (mod, amount) = ExtractionQueue[0];
+            var (mod, amount, callback) = ExtractionQueue[0];
             ExtractionQueue.RemoveAt(0);
-            Core.ParallelRunner.Run(new Coroutine(TakeFromStash(mod, amount), AutoSextant.Instance, _sellAssistantTakeFromStashCoroutineName));
+            Core.ParallelRunner.Run(new Coroutine(TakeFromStash(mod, amount, callback), AutoSextant.Instance, _sellAssistantTakeFromStashCoroutineName));
         }
     }
 

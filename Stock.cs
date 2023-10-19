@@ -216,6 +216,7 @@ namespace AutoSextant
                   currentCount = 0;
                 }
                 tabDict[m.RawName] = currentCount + 1;
+                break;
               }
             }
           }

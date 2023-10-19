@@ -44,6 +44,29 @@ public static class Inventory
     return items.OrderBy(x => x.PosX).ThenBy(x => x.PosY).ToArray();
   }
 
+  public static InventSlotItem[] GetByModName(string name)
+  {
+    var items = new List<InventSlotItem>();
+
+    foreach (var item in InventoryItems)
+    {
+      if (item.Item.HasComponent<Mods>())
+      {
+        var mods = item.Item.GetComponent<Mods>();
+        foreach (var m in mods.ItemMods)
+        {
+          if (CompassList.ModNameToPrice.ContainsKey(m.RawName))
+          {
+            items.Add(item);
+            break;
+          }
+        }
+      }
+    }
+
+    return items.OrderBy(x => x.PosX).ThenBy(x => x.PosY).ToArray();
+  }
+
   public static InventSlotItem GetSlotAt(int x, int y)
   {
     foreach (var item in InventoryItems)

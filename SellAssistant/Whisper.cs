@@ -11,6 +11,7 @@ public class WhisperItem
     public string Name { get; set; }
     public string ModName { get; set; }
     public int Quantity { get; set; }
+    public int Extracted { get; set; } = 0;
     public string Uuid { get; set; } = Guid.NewGuid().ToString();
 
     public FullfillmentStatus Status
@@ -90,6 +91,17 @@ public class Whisper
 
     public ButtonSelection ButtonSelection = ButtonSelection.None;
 
+    public float ValueReceived { get; set; } = 0;
+    public string ValueReceivedFormatted
+    {
+        get
+        {
+            if (SellAssistant.CurrentReport != null)
+                return Util.FormatChaosPrice(ValueReceived, SellAssistant.CurrentReport.DivinePrice);
+            else
+                return Util.FormatChaosPrice(ValueReceived);
+        }
+    }
     public float TotalPrice
     {
         get
@@ -280,8 +292,14 @@ public class Whisper
             {
                 buttons.Add((Keys.NumPad2, $"Extract", () =>
                 {
-                    SellAssistant.AddToExtractionQueue(Items.Select(x => (x.ModName, x.Quantity)).ToList());
-                    HasExtracted = true;
+                    int total = 0;
+                    Items.ForEach(x =>
+                    {
+                        var q = x.Quantity - x.Extracted;
+                        var quantity = total + q <= 60 ? q : 60 - total;
+                        if (quantity > 0)
+                            SellAssistant.AddToExtractionQueue(x.ModName, quantity, () => x.Extracted += quantity);
+                    });
                 }
                 ));
             }
@@ -313,7 +331,12 @@ public class Whisper
                 TradeManager.AddTradeRequest(new TradeRequest
                 {
                     PlayerName = PlayerName,
-                    ExpectedValue = TotalPrice,
+                    ExpectedValue = TotalPrice - ValueReceived,
+                    Callback = (request) =>
+                    {
+                        if (request.Status == TradeRequestStatus.Accepted)
+                            ValueReceived += request.ReceivedValue;
+                    }
                 });
                 HasTraded = true;
                 ButtonSelection = ButtonSelection.None;

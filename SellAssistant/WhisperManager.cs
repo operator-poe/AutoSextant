@@ -20,7 +20,7 @@ public static class WhisperManager
     public static List<Whisper> Whispers = Chat.GetPastMessages("@From", Whisper.WhisperPatterns.Select(x => new Regex(x.Item1)).ToList(), 3).Select(Whisper.Create).Where(x => x != null).ToList();
     // public static List<Whisper> Whispers = new List<Whisper>
     // {
-    //     Whisper.Create("@From _______test___________________: wtb 900 chayula"),
+    //     Whisper.Create("@From _______test___________________: wtb 80 chayula"),
     //     Whisper.Create("@From _____Test_____________: WTB 3 Strongbox Enraged 274c each, 4 Beyond 74c each. Total 3828c (16 div + 100c)"),
     // }.Where(x => x != null).ToList();//.Select(x => { x.InArea = true; return x; }).ToList();
 
@@ -225,7 +225,7 @@ public static class WhisperManager
         {
             ImGui.TableSetupColumn("Buyer", ImGuiTableColumnFlags.WidthStretch);
             ImGui.TableSetupColumn("Name", ImGuiTableColumnFlags.WidthStretch);
-            ImGui.TableSetupColumn("Amount", ImGuiTableColumnFlags.WidthFixed, tableWidth * 0.05f);
+            ImGui.TableSetupColumn("Amount", ImGuiTableColumnFlags.WidthFixed, tableWidth * 0.07f);
             ImGui.TableSetupColumn("Value", ImGuiTableColumnFlags.WidthStretch);
             ImGui.TableSetupColumn("Status", ImGuiTableColumnFlags.WidthFixed, tableWidth * 0.1f);
             ImGui.TableSetupColumn("", ImGuiTableColumnFlags.WidthStretch);
@@ -281,7 +281,7 @@ public static class WhisperManager
                 {
                     ImGui.PushID(i.ToString() + x.Name);
                     float buttonHeight = ImGui.GetFontSize();
-                    if (ImGui.Button("S", new Vector2(0, buttonHeight)))
+                    if (ImGui.Button("S", new Vector2(buttonHeight, buttonHeight)))
                     {
                         _executeOnNextTick.Add(() =>
                         {
@@ -295,9 +295,18 @@ public static class WhisperManager
                         });
                     }
                     ImGui.SameLine();
-                    if (ImGui.Button("X", new Vector2(0, buttonHeight)))
+                    if (ImGui.Button("X", new Vector2(buttonHeight, buttonHeight)))
                     {
                         _executeOnNextTick.Add(() => whisper.RemoveItem(x.Uuid));
+                    }
+                    ImGui.SameLine();
+                    if (ImGui.Button("R", new Vector2(buttonHeight, buttonHeight)))
+                    {
+                        _executeOnNextTick.Add(() =>
+                        {
+                            x.Extracted -= NInventory.Inventory.GetByModName(x.ModName).Length;
+                            AutoSextant.Instance.TriggerDump(x.ModName);
+                        });
                     }
                     ImGui.SameLine();
                     ImGui.Text(x.Name);
@@ -305,13 +314,28 @@ public static class WhisperManager
                     ImGui.PopID();
                 });
                 ImGui.TableNextColumn();
-                whisper.Items.ForEach(x => ImGui.Text(x.Quantity.ToString()));
+                whisper.Items.ForEach(x =>
+                {
+                    if (x.Extracted == 0)
+                        ImGui.TextColored(new System.Numerics.Vector4(1, 1, 1, 1), x.Extracted + "/" + x.Quantity.ToString());
+                    else if (x.Extracted < x.Quantity)
+                        ImGui.TextColored(new System.Numerics.Vector4(1, 0.5f, 0, 1), x.Extracted + "/" + x.Quantity.ToString());
+                    else
+                        ImGui.TextColored(new System.Numerics.Vector4(0, 1, 0, 1), x.Extracted + "/" + x.Quantity.ToString());
+                });
                 ImGui.TableNextColumn();
                 whisper.Items.ForEach(x => ImGui.Text(x.PriceFormatted));
                 if (whisper.MultiItem)
                 {
                     ImGui.Text("-----------------");
                     ImGui.Text(whisper.Price);
+                }
+                if (whisper.ValueReceived > 0)
+                {
+                    if (whisper.ValueReceived < whisper.TotalPrice)
+                        ImGui.TextColored(new System.Numerics.Vector4(1, 0.5f, 0, 1), whisper.ValueReceivedFormatted);
+                    else
+                        ImGui.TextColored(new System.Numerics.Vector4(0, 1, 0, 1), whisper.ValueReceivedFormatted);
                 }
 
                 ImGui.TableNextColumn();
