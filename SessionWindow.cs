@@ -113,11 +113,12 @@ public static class SessionWindow
       if (ImGui.CollapsingHeader("Mod Occurence", ImGuiTreeNodeFlags.DefaultOpen))
       {
 
-        if (ImGui.BeginTable("ModOccurenceTable", 4, ImGuiTableFlags.Borders | ImGuiTableFlags.RowBg | ImGuiTableFlags.Resizable | ImGuiTableFlags.NoSavedSettings))
+        if (ImGui.BeginTable("ModOccurenceTable", 5, ImGuiTableFlags.Borders | ImGuiTableFlags.RowBg | ImGuiTableFlags.Resizable | ImGuiTableFlags.NoSavedSettings))
         {
           ImGui.TableSetupColumn("Sextant Mod");
           ImGui.TableSetupColumn("Price");
-          ImGui.TableSetupColumn("Count");
+          ImGui.TableSetupColumn("Stock Count");
+          ImGui.TableSetupColumn("Session Count");
           ImGui.TableSetupColumn("Profit Total");
           ImGui.TableHeadersRow();
 
@@ -130,6 +131,8 @@ public static class SessionWindow
             ImGui.Text(mod.Item1);
             ImGui.TableNextColumn();
             ImGui.Text(FormatChaosPrice(CompassList.Prices[mod.Item1].ChaosPrice));
+            ImGui.TableNextColumn();
+            ImGui.Text(Stock.Get(CompassList.PriceToModName[mod.Item1]).ToString());
             ImGui.TableNextColumn();
             ImGui.Text(mod.Item2.ToString());
             ImGui.TableNextColumn();

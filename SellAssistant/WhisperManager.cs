@@ -260,7 +260,22 @@ public static class WhisperManager
                 }
 
                 ImGui.TableNextColumn();
-                ImGui.Text(whisper.PlayerName);
+                if (ImGui.Selectable(whisper.PlayerName))
+                {
+                    _executeOnNextTick.Add(() =>
+                    {
+                        Chat.ChatWith(whisper.PlayerName);
+                    });
+                }
+                ImGui.TextDisabled("(Original message)");
+                if (ImGui.IsItemHovered())
+                {
+                    ImGui.BeginTooltip();
+                    ImGui.PushTextWrapPos(ImGui.GetFontSize() * 35.0f);
+                    ImGui.TextUnformatted(whisper.Message);
+                    ImGui.PopTextWrapPos();
+                    ImGui.EndTooltip();
+                }
                 ImGui.TableNextColumn();
                 whisper.Items.ForEach(x =>
                 {

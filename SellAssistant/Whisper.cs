@@ -17,9 +17,9 @@ public class WhisperItem
     {
         get
         {
-            if (!SellAssistant.CompassCounts.ContainsKey(ModName))
+            if (!Stock.Has(ModName))
                 return FullfillmentStatus.NotAvailable;
-            if (Quantity > SellAssistant.CompassCounts[ModName])
+            if (Quantity > Stock.Get(ModName))
                 return FullfillmentStatus.NotEnough;
             return FullfillmentStatus.Available;
         }
@@ -164,7 +164,7 @@ public class Whisper
                     }
                     var mod = CompassList.PriceToModName[closestMatch];
                     if (quantity == "all")
-                        quantity = SellAssistant.CompassCounts[mod].ToString();
+                        quantity = Stock.Get(mod).ToString();
 
                     items.Add(new WhisperItem
                     {
@@ -178,6 +178,7 @@ public class Whisper
                 {
                     PlayerName = username,
                     Items = items,
+                    Message = whisper,
                     Uuid = Guid.NewGuid().ToString(),
                 };
             }
@@ -231,7 +232,7 @@ public class Whisper
                 var Item = Items[0];
                 buttons.Add((Keys.NumPad2, $"Partial", new Action(() =>
                 {
-                    var count = SellAssistant.CompassCounts[Item.ModName];
+                    var count = Stock.Get(Item.ModName);
                     if (SellAssistant.CurrentReport != null)
                     {
                         var priceString = SellAssistant.CurrentReport.AmountToString(Item.Name, count);

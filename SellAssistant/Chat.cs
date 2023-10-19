@@ -286,6 +286,33 @@ public static class Chat
         }
     }
 
+    public static void ChatWith(string username)
+    {
+        if (Core.ParallelRunner.FindByName(_sendChatCoroutineName) == null)
+        {
+            Core.ParallelRunner.Run(ChatWithUser(username), AutoSextant.Instance, _sendChatCoroutineName);
+        }
+        else
+        {
+            Log.Error("Cannot send chat message while another message is being sent");
+            return;
+        }
+    }
+
+    public static IEnumerator ChatWithUser(string username)
+    {
+        yield return Open();
+        yield return Replace();
+
+        Util.SetClipBoardText($"@{username} ");
+        yield return new WaitFunctionTimed(() => Util.GetClipboardText() == $"@{username} ", true, 1000, "Clipboard text not set");
+        Input.KeyDown(Keys.ControlKey);
+        yield return Input.KeyPress(Keys.V);
+        Input.KeyUp(Keys.ControlKey);
+
+        yield return new WaitFunctionTimed(() => CurrentInput == $"@{username} ", true, 1000, "Chat input not set to message");
+    }
+
     public static IEnumerator Open()
     {
         yield return Util.ForceFocus();

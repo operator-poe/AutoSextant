@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using AutoSextant.SellAssistant;
 using ExileCore.Shared;
 
 namespace AutoSextant.NStash;
@@ -121,5 +122,33 @@ public static class Stash
   public static int TabIndex(string name)
   {
     return Tabs.FindIndex(t => t.Name == name);
+  }
+
+  public static IEnumerator EnsureStashesAreLoaded(List<string> stashNames)
+  {
+    yield return Util.ForceFocus();
+    yield return AutoSextant.Instance.EnsureStash();
+    foreach (var t in stashNames)
+    {
+      yield return SelectTab(t);
+      int TabIndex = Stash.TabIndex(t);
+      yield return new WaitFunctionTimed(() =>
+           Ex.StashElement.AllInventories[TabIndex] != null
+      , false, 500);
+    }
+    yield return new WaitTime(20);
+  }
+
+  public static bool AreStashesLoaded(List<string> stashNames)
+  {
+    foreach (var t in stashNames)
+    {
+      int TabIndex = Stash.TabIndex(t);
+      if (Ex.StashElement.AllInventories[TabIndex] == null)
+      {
+        return false;
+      }
+    }
+    return true;
   }
 }

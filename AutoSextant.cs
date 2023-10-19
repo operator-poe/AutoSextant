@@ -162,6 +162,7 @@ public class AutoSextant : BaseSettingsPlugin<AutoSextantSettings>
 
     public IEnumerator Run()
     {
+        yield return Stock.Refresh();
         yield return EnsureAtlas();
 
         if (!Atlas.HasBlockMods)
@@ -179,7 +180,18 @@ public class AutoSextant : BaseSettingsPlugin<AutoSextantSettings>
             var compassPrice = stone.Price;
             var currentName = compassPrice?.Name ?? null;
 
-            if (compassPrice == null || compassPrice.ChaosPrice < Settings.MinChaosValue)
+            bool capOk = true;
+            int index, cap;
+            string _;
+            bool never, always;
+            if (currentName != null)
+            {
+                index = Settings.ModSettings.FindIndex(x => x.Item1 == currentName);
+                (_, never, always, cap) = index != -1 ? Settings.ModSettings[index] : (currentName, false, false, 0);
+                capOk = cap > 0 ? Stock.Get(CompassList.PriceToModName[currentName]) < cap : true;
+            }
+
+            if (compassPrice == null || compassPrice.ChaosPrice < Settings.MinChaosValue || !capOk)
             {
                 var nextSextant = Inventory.NextSextant;
                 if (nextSextant == null)
@@ -205,10 +217,11 @@ public class AutoSextant : BaseSettingsPlugin<AutoSextantSettings>
 
             compassPrice = stone.Price;
 
-            var index = Settings.ModSettings.FindIndex(x => x.Item1 == compassPrice.Name);
-            var (_, never, always, cap) = index != -1 ? Settings.ModSettings[index] : (compassPrice.Name, false, false, 0);
+            index = Settings.ModSettings.FindIndex(x => x.Item1 == compassPrice.Name);
+            (_, never, always, cap) = index != -1 ? Settings.ModSettings[index] : (compassPrice.Name, false, false, 0);
 
-            if ((!never && stone.Price != null && compassPrice.ChaosPrice >= Settings.MinChaosValue) || always)
+            capOk = cap > 0 ? Stock.Get(CompassList.PriceToModName[compassPrice.Name]) < cap : true;
+            if ((!never && stone.Price != null && compassPrice.ChaosPrice >= Settings.MinChaosValue && capOk) || (always && capOk))
             {
                 holdingShift = false;
                 Input.KeyUp(System.Windows.Forms.Keys.ShiftKey);
@@ -276,6 +289,9 @@ public class AutoSextant : BaseSettingsPlugin<AutoSextantSettings>
         {
             foreach (var tabName in dumpTabs)
             {
+                if (Stock.Tabs.ContainsKey(tabName) && Stock.Tabs[tabName].Values.Sum() >= 576)
+                    continue;
+
                 var items = Inventory.ChargedCompasses;
                 var tab = Stash.GetStashTabIndexForName(tabName);
                 yield return NStash.Stash.SelectTab(tab);

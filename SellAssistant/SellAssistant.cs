@@ -52,7 +52,6 @@ public static class SellAssistant
 
     private static AutoSextant I = AutoSextant.Instance;
 
-    public static Dictionary<string, int> CompassCounts = new Dictionary<string, int>();
     private static (System.Numerics.Vector2, System.Numerics.Vector2) _windowPos = (System.Numerics.Vector2.Zero, System.Numerics.Vector2.Zero);
 
     public static readonly string _sellAssistantInitCoroutineName = "AutoSextant.SellAssistant.SellAssistant.Init";
@@ -93,8 +92,11 @@ public static class SellAssistant
         var inventoryRect = I.GameController.Game.IngameState.IngameUi.InventoryPanel.GetClientRect();
         _windowPos = (new System.Numerics.Vector2(inventoryRect.X, inventoryRect.Y), new System.Numerics.Vector2(inventoryRect.Width, inventoryRect.Height / 2));
 
-        _enabled = true;
-        Core.ParallelRunner.Run(new Coroutine(Init(), AutoSextant.Instance, _sellAssistantInitCoroutineName));
+        ExecuteOnNextTick(() =>
+        {
+            _enabled = true;
+            Stock.RunRefresh(() => RefreshTable());
+        });
     }
 
     public static void Disable()
@@ -104,66 +106,21 @@ public static class SellAssistant
         _windowPos = (System.Numerics.Vector2.Zero, System.Numerics.Vector2.Zero);
         selectedFilter = "";
         CurrentReport = null;
-        CompassCounts.Clear();
         StopAllRoutines();
         WhisperManager.Whispers.Clear();
         _enabled = false;
     }
 
-    public static IEnumerator Init()
-    {
-        yield return Util.ForceFocus();
-        yield return AutoSextant.Instance.EnsureStash();
-        var dumpTabs = I.Settings.DumpTabs.Value.Split(',').Select(x => x.Trim()).ToList();
-        foreach (var t in dumpTabs)
-        {
-            yield return NStash.Stash.SelectTab(t);
-            int TabIndex = NStash.Stash.TabIndex(t);
-            yield return new WaitFunctionTimed(() =>
-                 NStash.Ex.StashElement.AllInventories[TabIndex] != null
-            , false, 500);
-        }
-        yield return new WaitTime(200);
-
-        RefreshTable();
-        yield break;
-
-    }
 
     private static void RefreshTable()
     {
-        lock (CompassCounts)
-            CompassCounts.Clear();
-
-        var dumpTabs = I.Settings.DumpTabs.Value.Split(',').Select(x => x.Trim()).ToList();
-        var tabs = dumpTabs.Select(x => new NStash.StashTab(x)).ToList();
-        foreach (var t in tabs)
-        {
-            foreach (var i in t.StashElement.VisibleInventoryItems)
-            {
-                if (i.Item.HasComponent<Mods>())
-                {
-                    var mods = i.Item.GetComponent<Mods>();
-                    foreach (var m in mods.ItemMods)
-                    {
-                        if (CompassList.ModNameToPrice.ContainsKey(m.RawName))
-                        {
-                            if (!CompassCounts.ContainsKey(m.RawName))
-                                CompassCounts.Add(m.RawName, 0);
-                            CompassCounts[m.RawName]++;
-                        }
-                    }
-                }
-            }
-        }
-
-        if (selectedMod != "" && !CompassCounts.ContainsKey(selectedMod))
+        if (selectedMod != "" && !Stock.Has(selectedMod))
         {
             selectedMod = "";
         }
         else if (selectedMod != "")
         {
-            selectedAmount = CompassCounts[selectedMod];
+            selectedAmount = Stock.Get(selectedMod);
         }
     }
 
@@ -235,7 +192,7 @@ public static class SellAssistant
             yield return new WaitTime(10);
         }
 
-        RefreshTable();
+        Stock.RunRefresh(() => RefreshTable());
 
         Input.RestorePosition();
     }
@@ -334,7 +291,7 @@ public static class SellAssistant
             else if (_isAmountFocused && !ImGui.IsItemFocused())
                 _isAmountFocused = false;
 
-            ImGui.SliderInt("Select Amount", ref selectedAmount, 1, CompassCounts[selectedMod]);
+            ImGui.SliderInt("Select Amount", ref selectedAmount, 1, Stock.Get(selectedMod));
             if (ImGui.Button("Take from stash"))
             {
                 ExecuteOnNextTick(() => Core.ParallelRunner.Run(new Coroutine(TakeFromStash(), AutoSextant.Instance, _sellAssistantTakeFromStashCoroutineName)));
@@ -403,7 +360,7 @@ public static class SellAssistant
             ExecuteOnNextTick(() => { selectedFilter = ""; });
         ImGui.SameLine();
         if (ImGui.Button("R"))
-            ExecuteOnNextTick(Enable);
+            Enable();
         ImGui.Spacing();
 
         float tableWidth = ImGui.GetContentRegionAvail().X;
@@ -423,7 +380,7 @@ public static class SellAssistant
                 if (selectedFilter != "" && !tft.ToUpper().Contains(selectedFilter.ToUpper()))
                     continue;
                 var mod = c.Value;
-                if (!CompassCounts.ContainsKey(mod))
+                if (!Stock.Has(mod))
                     continue;
 
                 ImGui.TableNextRow();
@@ -435,18 +392,18 @@ public static class SellAssistant
                     ExecuteOnNextTick(() =>
                     {
                         selectedMod = mod;
-                        selectedAmount = CompassCounts[mod];
+                        selectedAmount = Stock.Get(mod);
                         selectedFocus = true;
                     });
                 }
 
                 ImGui.TableNextColumn();
-                ImGui.Text(CompassCounts[mod].ToString());
+                ImGui.Text(Stock.Get(mod).ToString());
 
                 ImGui.TableNextColumn();
                 if (CurrentReport != null)
                 {
-                    var price = CurrentReport.AmountToString(tft, CompassCounts[mod]);
+                    var price = CurrentReport.AmountToString(tft, Stock.Get(mod));
                     if (price != null)
                         ImGui.Text(price);
                     else
@@ -455,7 +412,7 @@ public static class SellAssistant
                 else
                 {
                     var price = CompassList.Prices[tft];
-                    var priceString = Util.FormatChaosPrice((float)(price.DivinePrice > 1.0f ? price.DivinePrice : price.ChaosPrice) * CompassCounts[mod], price.DivinePrice);
+                    var priceString = Util.FormatChaosPrice((float)(price.DivinePrice > 1.0f ? price.DivinePrice : price.ChaosPrice) * Stock.Get(mod), price.DivinePrice);
                     ImGui.Text(priceString);
                 }
 
