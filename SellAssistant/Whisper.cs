@@ -67,7 +67,8 @@ public class Whisper
         };
 
     public string PlayerName { get; set; }
-    public string Message { get; set; }
+    public List<string> Messages { get; set; } = new List<string>();
+    public Dictionary<string, int> InInventory { get; set; } = new Dictionary<string, int>();
     public string Uuid { get; set; }
 
     public List<WhisperItem> Items { get; set; } = new List<WhisperItem>();
@@ -117,6 +118,39 @@ public class Whisper
                 return Util.FormatChaosPrice(TotalPrice, SellAssistant.CurrentReport.DivinePrice);
             else
                 return Util.FormatChaosPrice(TotalPrice);
+        }
+    }
+
+    public Whisper()
+    {
+        _checkIfProbablyWantsChange = new ThrottledAction(TimeSpan.FromMilliseconds(500), () =>
+    {
+        var price = TotalPrice;
+        if (SellAssistant.CurrentReport != null)
+            price = TotalPrice / SellAssistant.CurrentReport.DivinePrice;
+        var nextDivine = Math.Ceiling(price);
+        foreach (string m in Messages)
+        {
+            if (m.ToLower().Contains("change"))
+                _probablyWantsChange = true;
+            // take total price and calculate next divine
+            if (m.ToLower().Contains(nextDivine.ToString() + "d"))
+                _probablyWantsChange = true;
+            if (_probablyWantsChange)
+                return;
+        }
+        _probablyWantsChange = false;
+    });
+    }
+
+    private ThrottledAction _checkIfProbablyWantsChange;
+    private bool _probablyWantsChange = false;
+    public bool ProbablyWantsChange
+    {
+        get
+        {
+            _checkIfProbablyWantsChange.Invoke();
+            return _probablyWantsChange;
         }
     }
 
@@ -190,7 +224,7 @@ public class Whisper
                 {
                     PlayerName = username,
                     Items = items,
-                    Message = whisper,
+                    Messages = new List<string> { whisper },
                     Uuid = Guid.NewGuid().ToString(),
                 };
             }
@@ -214,6 +248,65 @@ public class Whisper
                 existingItem.Quantity = item.Quantity;
             else
                 Items.Add(item);
+        }
+    }
+
+    private void Extract()
+    {
+        int total = 0;
+        int spaceAvailable = NInventory.Inventory.FreeInventorySlots;
+        Items.ForEach(x =>
+        {
+            var q = x.Quantity - x.Extracted;
+            var quantity = total + q <= spaceAvailable ? q : spaceAvailable - total;
+            if (quantity > 0)
+            {
+                total += quantity;
+                SellAssistant.AddToExtractionQueue(x.ModName, quantity, () =>
+                {
+                    x.Extracted += quantity;
+                    InInventory[x.ModName] = quantity;
+                    Log.Debug($"Extracted {quantity} {x.ModName}");
+                });
+            }
+        });
+    }
+
+    private void Trade(bool withChange = false)
+    {
+        var expectedValue = TotalPrice - ValueReceived;
+        TradeManager.AddTradeRequest(new TradeRequest
+        {
+            PlayerName = PlayerName,
+            ExpectedValue = expectedValue,
+            WithChange = withChange,
+            Items = InInventory,
+            Callback = (request) =>
+            {
+                if (request.Status == TradeRequestStatus.Accepted)
+                {
+                    if (request.ReceivedValue >= expectedValue * 0.99)
+                        ValueReceived = expectedValue;
+                    else
+                        ValueReceived += request.ReceivedValue;
+                }
+            }
+        });
+    }
+
+    private void ReturnItems()
+    {
+        foreach (var (mod, quantity) in InInventory)
+        {
+            AutoSextant.Instance.TriggerDump(mod, quantity, (int dumped) =>
+            {
+                Log.Debug($"Dumped {dumped} {mod}");
+                foreach (var item in Items.Where(x => x.ModName == mod))
+                {
+                    item.Extracted -= quantity;
+                }
+                InInventory.Remove(mod);
+            });
         }
     }
 
@@ -292,14 +385,7 @@ public class Whisper
             {
                 buttons.Add((Keys.NumPad2, $"Extract", () =>
                 {
-                    int total = 0;
-                    Items.ForEach(x =>
-                    {
-                        var q = x.Quantity - x.Extracted;
-                        var quantity = total + q <= 60 ? q : 60 - total;
-                        if (quantity > 0)
-                            SellAssistant.AddToExtractionQueue(x.ModName, quantity, () => x.Extracted += quantity);
-                    });
+                    Extract();
                 }
                 ));
             }
@@ -310,7 +396,6 @@ public class Whisper
             }
             ));
         }
-
 
 
         if (ButtonSelection == ButtonSelection.Trade)
@@ -328,29 +413,13 @@ public class Whisper
             ));
             buttons.Add((Keys.NumPad2, $"Regular", () =>
             {
-                TradeManager.AddTradeRequest(new TradeRequest
-                {
-                    PlayerName = PlayerName,
-                    ExpectedValue = TotalPrice - ValueReceived,
-                    Callback = (request) =>
-                    {
-                        if (request.Status == TradeRequestStatus.Accepted)
-                            ValueReceived += request.ReceivedValue;
-                    }
-                });
-                HasTraded = true;
+                Trade();
                 ButtonSelection = ButtonSelection.None;
             }
             ));
             buttons.Add((Keys.NumPad3, $"With Change", () =>
             {
-                TradeManager.AddTradeRequest(new TradeRequest
-                {
-                    PlayerName = PlayerName,
-                    ExpectedValue = TotalPrice,
-                    WithChange = true
-                });
-                HasTraded = true;
+                Trade(true);
                 ButtonSelection = ButtonSelection.None;
             }
             ));
@@ -376,6 +445,11 @@ public class Whisper
             buttons.Add((Keys.NumPad5, "X", () =>
             {
                 Hidden = true;
+            }
+            ));
+            buttons.Add((Keys.NumPad6, "Return Items", () =>
+            {
+                ReturnItems();
             }
             ));
         }

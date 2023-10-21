@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using System.Text.RegularExpressions;
+using System.Threading.Tasks.Dataflow;
 using ExileCore.Shared.Nodes;
 using ImGuiNET;
 
@@ -77,6 +78,14 @@ public static class WhisperManager
                     {
                         whisper.InArea = false;
                     }
+                }
+            }
+
+            foreach (var w in ActiveWhispers)
+            {
+                if (message.Contains(w.PlayerName))
+                {
+                    w.Messages.Add(message);
                 }
             }
         }
@@ -272,10 +281,15 @@ public static class WhisperManager
                 {
                     ImGui.BeginTooltip();
                     ImGui.PushTextWrapPos(ImGui.GetFontSize() * 35.0f);
-                    ImGui.TextUnformatted(whisper.Message);
+                    foreach (var m in whisper.Messages)
+                        ImGui.TextUnformatted(m);
                     ImGui.PopTextWrapPos();
                     ImGui.EndTooltip();
                 }
+                if (whisper.ProbablyWantsChange)
+                    ImGui.TextColored(new System.Numerics.Vector4(1, 0.5f, 0, 1), "(Change)");
+
+
                 ImGui.TableNextColumn();
                 whisper.Items.ForEach(x =>
                 {
@@ -298,15 +312,6 @@ public static class WhisperManager
                     if (ImGui.Button("X", new Vector2(buttonHeight, buttonHeight)))
                     {
                         _executeOnNextTick.Add(() => whisper.RemoveItem(x.Uuid));
-                    }
-                    ImGui.SameLine();
-                    if (ImGui.Button("R", new Vector2(buttonHeight, buttonHeight)))
-                    {
-                        _executeOnNextTick.Add(() =>
-                        {
-                            x.Extracted -= NInventory.Inventory.GetByModName(x.ModName).Length;
-                            AutoSextant.Instance.TriggerDump(x.ModName);
-                        });
                     }
                     ImGui.SameLine();
                     ImGui.Text(x.Name);

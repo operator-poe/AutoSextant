@@ -125,6 +125,7 @@ namespace AutoSextant
     public static readonly Dictionary<string, Dictionary<string, int>> Tabs = new Dictionary<string, Dictionary<string, int>>();
 
     public static int Get(string modName) => CompassCounts.TryGetValue(modName, out int value) ? value : 0;
+    public static int GetFromPriceName(string priceName) => Get(CompassList.PriceToModName[priceName]);
 
     public static bool Has(string modName) => Get(modName) > 0;
 

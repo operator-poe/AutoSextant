@@ -44,7 +44,21 @@ public static class Inventory
     return items.OrderBy(x => x.PosX).ThenBy(x => x.PosY).ToArray();
   }
 
-  public static InventSlotItem[] GetByModName(string name)
+
+  public static InventSlotItem[] GetByModName(List<(string, int)> names)
+  {
+    var items = new List<InventSlotItem>();
+
+    foreach (var (modName, quantity) in names)
+    {
+      var i = GetByModName(modName);
+      items.AddRange(i.Take(quantity));
+    }
+
+    return items.OrderBy(x => x.PosX).ThenBy(x => x.PosY).ToArray();
+  }
+
+  public static InventSlotItem[] GetByModName(List<string> names)
   {
     var items = new List<InventSlotItem>();
 
@@ -55,7 +69,7 @@ public static class Inventory
         var mods = item.Item.GetComponent<Mods>();
         foreach (var m in mods.ItemMods)
         {
-          if (CompassList.ModNameToPrice.ContainsKey(m.RawName))
+          if (CompassList.ModNameToPrice.ContainsKey(m.RawName) && names.Contains(m.RawName))
           {
             items.Add(item);
             break;
@@ -65,6 +79,26 @@ public static class Inventory
     }
 
     return items.OrderBy(x => x.PosX).ThenBy(x => x.PosY).ToArray();
+  }
+
+  public static InventSlotItem[] GetByModName(string name)
+  {
+    return GetByModName(new List<string> { name });
+  }
+
+  public static int InventoryCount
+  {
+    get
+    {
+      return InventoryItems.Count(x => x.Item != null);
+    }
+  }
+  public static int FreeInventorySlots
+  {
+    get
+    {
+      return 60 - InventoryCount;
+    }
   }
 
   public static InventSlotItem GetSlotAt(int x, int y)

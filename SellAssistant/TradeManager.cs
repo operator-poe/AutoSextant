@@ -33,6 +33,7 @@ public class TradeRequest
     public TradeRequestStatus Status { get; set; } = TradeRequestStatus.None;
     public Action<TradeRequest> Callback { get; set; } = null;
     public bool CallbackInvoked { get; set; } = false;
+    public Dictionary<string, int> Items { get; set; }
 }
 
 public static class TradeManager
@@ -189,9 +190,13 @@ public static class TradeManager
         get
         {
             if (ActiveTrade != null && ActiveTrade.WithChange)
-                return NInventory.Inventory.GetByName("Charged Compass", "Chaos Orb");
+            {
+                var items = NInventory.Inventory.GetByModName(ActiveTrade.Items.Select(x => (x.Key, x.Value)).ToList()).ToList();
+                items.AddRange(NInventory.Inventory.GetByName("Chaos Orb"));
+                return items;
+            }
             else
-                return NInventory.Inventory.GetByName("Charged Compass");
+                return NInventory.Inventory.GetByModName(ActiveTrade.Items.Select(x => (x.Key, x.Value)).ToList());
         }
     }
     private static int CompassCount
@@ -335,79 +340,93 @@ public static class TradeManager
             divinePrice = SellAssistant.CurrentReport.DivinePrice;
         }
 
-        if (!valueMode)
-        {
-            Log.Debug("Hovering other player's items in non-value mode");
-            int startingItems = 0;
-            HashSet<int> hoveredItems = new HashSet<int>();
-            // In non-value mode we're just waiting for the trade to be accepted
-            // mouse movement is not restricted, only taken over when new items are added
-            while (ActiveTrade.Status == TradeRequestStatus.ItemsTransferred)
-            {
-                startingItems = OfferedItems.Count();
-                if (hoveredItems.Count() == OfferedItems.Count() && ItemsLeftToHover)
-                {
-                    hoveredItems.Clear();
-                }
-                for (int i = 0; i < OfferedItems.Count(); i++)
-                {
-                    if (!hoveredItems.Contains(i))
-                    {
-                        yield return new WaitTime(10);
-                        Input.SetCursorPos(OfferedItems[i].GetClientRect().Center);
-                        yield return new WaitTime(10);
-                        // Width is only intialized after the item is hovered
-                        yield return new WaitFunctionTimed(() => OfferedItems[i].Tooltip.Width > 0, false, 100);
-                        hoveredItems.Add(i);
-                    }
-                }
-                yield return new WaitFunctionTimed(() => OfferedItems.Count() != startingItems, false, 500);
-            }
-            // one last check to make sure we didn't miss any items
-            if (ItemsLeftToHover)
-                yield return HoverTradeItems();
-            // no need to do anything else in non-value mode, just return
-            yield break;
-        }
+        // if (!valueMode)
+        // {
+        //     Log.Debug("Hovering other player's items in non-value mode");
+        //     int startingItems = 0;
+        //     HashSet<int> hoveredItems = new HashSet<int>();
+        //     // In non-value mode we're just waiting for the trade to be accepted
+        //     // mouse movement is not restricted, only taken over when new items are added
+        //     while (ActiveTrade.Status == TradeRequestStatus.ItemsTransferred)
+        //     {
+        //         startingItems = OfferedItems.Count();
+        //         if (hoveredItems.Count() == OfferedItems.Count() && ItemsLeftToHover)
+        //         {
+        //             hoveredItems.Clear();
+        //         }
+        //         for (int i = 0; i < OfferedItems.Count(); i++)
+        //         {
+        //             if (!hoveredItems.Contains(i))
+        //             {
+        //                 yield return new WaitTime(10);
+        //                 Input.SetCursorPos(OfferedItems[i].GetClientRect().Center);
+        //                 yield return new WaitTime(10);
+        //                 // Width is only intialized after the item is hovered
+        //                 yield return new WaitFunctionTimed(() => OfferedItems[i].Tooltip.Width > 0, false, 100);
+        //                 hoveredItems.Add(i);
+        //             }
+        //         }
+        //         yield return new WaitFunctionTimed(() => OfferedItems.Count() != startingItems, false, 500);
+        //     }
+        //     // one last check to make sure we didn't miss any items
+        //     if (ItemsLeftToHover)
+        //         yield return HoverTradeItems();
+        //     // no need to do anything else in non-value mode, just return
+        //     yield break;
+        // }
 
         Log.Debug("Hovering other player's items in value mode");
-
+        Log.Debug("Expected value: " + ActiveTrade.ExpectedValue);
 
         while (TradeWindow is { IsVisible: true })
         {
             yield return new WaitTime(50);
-            int itemCount = 0;
-            HashSet<int> itemsHovered = new HashSet<int>();
-            while (TotalChaosValue < (ActiveTrade.ExpectedValue + ChangeAmount) * 0.99 || ItemsLeftToHover)
+            if (ActiveTrade.ExpectedValue > 0)
             {
-                itemCount = OfferedItems.Count();
-                if (itemsHovered.Count() == OfferedItems.Count() && ItemsLeftToHover)
+                HashSet<int> itemsHovered = new HashSet<int>();
+                while (TotalChaosValue < (ActiveTrade.ExpectedValue + ChangeAmount) * 0.99 || ItemsLeftToHover)
                 {
-                    itemsHovered.Clear();
-                }
-                for (int i = 0; i < OfferedItems.Count(); i++)
-                {
-                    if (!itemsHovered.Contains(i))
+                    if (itemsHovered.Count() == OfferedItems.Count() && ItemsLeftToHover)
                     {
-                        yield return new WaitTime(10);
-                        Input.SetCursorPos(OfferedItems[i].GetClientRect().Center);
-                        yield return new WaitTime(10);
-                        // Width is only intialized after the item is hovered
-                        yield return new WaitFunctionTimed(() => OfferedItems[i].Tooltip.Width > 0, false, 100);
-                        itemsHovered.Add(i);
+                        itemsHovered.Clear();
                     }
+                    for (int i = 0; i < OfferedItems.Count(); i++)
+                    {
+                        if (!itemsHovered.Contains(i))
+                        {
+                            yield return new WaitTime(10);
+                            Input.SetCursorPos(OfferedItems[i].GetClientRect().Center);
+                            yield return new WaitTime(10);
+                            // Width is only intialized after the item is hovered
+                            yield return new WaitFunctionTimed(() => OfferedItems[i].Tooltip.Width > 0, false, 100);
+                            itemsHovered.Add(i);
+                        }
+                    }
+                    yield return new WaitTime(500);
                 }
-                yield return new WaitTime(500);
+                if (ItemsLeftToHover)
+                    continue;
+                yield return new WaitTime(50);
             }
-            if (ItemsLeftToHover)
-                continue;
-            yield return new WaitTime(50);
+            else
+            {
+                Log.Debug("Expected value is 0, skipping hovering");
+            }
             if (!TradeWindow.SellerAccepted)
             {
                 ActiveTrade.ReceivedValue = TotalChaosValue;
                 yield return Input.ClickElement(TradeWindow.AcceptButton.GetClientRect().Center);
             }
             yield return new WaitTime(50);
+        }
+    }
+
+    public static IList<NormalInventoryItem> YourOffer
+    {
+        get
+        {
+            return TradeWindow.YourOffer;
+            // return TradeWindow.YourOffer.ToList().Where(x => x?.Text != "Place items you want to trade here").ToList();
         }
     }
 
@@ -419,9 +438,10 @@ public static class TradeManager
 
         Input.HoldCtrl();
         var attempts = 0;
-        while (TradeWindow.YourOffer.Count() < startingItems)
+        while (YourOffer.Count() < startingItems)
         {
             attempts++;
+            Log.Debug($"Attempt {attempts} to transfer compasses");
             if (attempts > 3)
             {
                 Log.Error("Failed to transfer compasses");
@@ -429,11 +449,23 @@ public static class TradeManager
             }
             foreach (var item in Compasses)
             {
-                var oldCount = TradeWindow.YourOffer.Count();
+                var oldCount = YourOffer.Count();
 
                 yield return Input.ClickElement(item.GetClientRect().Center);
 
-                yield return new WaitFunctionTimed(() => TradeWindow.YourOffer.Count() > oldCount, false, 100, "Compass not transferred");
+                yield return new WaitFunctionTimed(() => YourOffer.Count() > oldCount, false, 50, "Compass not transferred");
+            }
+            yield return new WaitTime(30);
+        }
+        if (startingItems == 1) // Since youroffer label "place items" is counted as an item run this manually
+        {
+            foreach (var item in Compasses)
+            {
+                var oldCount = YourOffer.Count();
+
+                yield return Input.ClickElement(item.GetClientRect().Center);
+
+                yield return new WaitFunctionTimed(() => YourOffer.Count() > oldCount, false, 50, "Compass not transferred");
             }
         }
         Input.ReleaseCtrl();

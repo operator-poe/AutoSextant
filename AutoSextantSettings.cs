@@ -24,28 +24,41 @@ public class AutoSextantSettings : ISettings
     {
         ExtraDelay = new RangeNode<int>(0, 0, 2000);
 
+        string modFilter = "";
         ModSettingsNode = new CustomNode
         {
             DrawDelegate = () =>
             {
                 var modNames = new List<string>(CompassList.PriceToModName.Keys);
+                if (modFilter != "")
+                    modNames = modNames.Where(x => x.ToLower().Contains(modFilter.ToLower())).ToList();
+                var modNamesWithPrices = modNames.Select(modName => (modName, CompassList.Prices.TryGetValue(modName, out var price) ? price.ChaosPrice : 0)).OrderByDescending(x => x.Item2).ToList();
 
                 if (ImGui.TreeNode("Individual Mod Settings"))
                 {
-                    if (ImGui.BeginTable("AutoSextantSettingsTable", 5, ImGuiTableFlags.Borders | ImGuiTableFlags.RowBg))
+                    ImGui.SameLine();
+                    if (ImGui.Button("Refresh Stock"))
+                        Stock.RunRefresh();
+
+                    ImGui.InputTextWithHint("##ModFilter", "Filter", ref modFilter, 100);
+                    if (ImGui.BeginTable("AutoSextantSettingsTable", 6, ImGuiTableFlags.Borders | ImGuiTableFlags.RowBg))
                     {
                         ImGui.TableSetupColumn("Name");
+                        ImGui.TableSetupColumn("Current Stock");
                         ImGui.TableSetupColumn("Always Skip");
                         ImGui.TableSetupColumn("Always Take");
                         ImGui.TableSetupColumn("Cap");
                         ImGui.TableSetupColumn("Price");
                         ImGui.TableHeadersRow();
 
-                        foreach (var modName in modNames)
+                        foreach (var (modName, price) in modNamesWithPrices)
                         {
                             ImGui.TableNextRow();
                             ImGui.TableNextColumn();
                             ImGui.Text(modName);
+
+                            ImGui.TableNextColumn();
+                            ImGui.Text(Stock.GetFromPriceName(modName).ToString());
 
                             ImGui.TableNextColumn();
                             var index = ModSettings.FindIndex(x => x.Item1 == modName);
@@ -78,18 +91,16 @@ public class AutoSextantSettings : ISettings
                             ImGui.TableNextColumn();
                             if (CompassList.Prices != null)
                             {
-                                var p = CompassList.Prices.TryGetValue(modName, out var price) ? price.ChaosPrice : 0;
-
-                                if (p >= MinChaosValue.Value)
+                                if (price >= MinChaosValue.Value)
                                 {
                                     ImGui.PushStyleColor(ImGuiCol.Text, new Vector4(0, 1, 0, 1));
-                                    ImGui.Text(p.ToString("0.0") + "c");
+                                    ImGui.Text(price.ToString("0.0") + "c");
                                     ImGui.PopStyleColor();
                                 }
                                 else
                                 {
                                     ImGui.PushStyleColor(ImGuiCol.Text, new Vector4(1, 0, 0, 1));
-                                    ImGui.Text(p.ToString("0.0") + "c");
+                                    ImGui.Text(price.ToString("0.0") + "c");
                                     ImGui.PopStyleColor();
                                 }
                             }
@@ -103,11 +114,19 @@ public class AutoSextantSettings : ISettings
                     }
                     ImGui.TreePop();
                 }
+                else
+                {
+                    ImGui.SameLine();
+                    if (ImGui.Button("Refresh Stock"))
+                        Stock.RunRefresh();
+                }
             }
         };
     }
 
 
+    [JsonIgnore]
+    public ButtonNode UpdatePoeStackPrices { get; set; } = new ButtonNode();
     [JsonIgnore]
     public CustomNode ModSettingsNode { get; set; }
     [Menu("Extra Delay", "Delay to wait after each inventory clearing attempt(in ms).")]
@@ -115,7 +134,7 @@ public class AutoSextantSettings : ISettings
 
     public HotkeyNode RestockHotkey { get; set; } = new HotkeyNode(System.Windows.Forms.Keys.F7);
     public HotkeyNode CancelHotKey { get; set; } = new HotkeyNode(System.Windows.Forms.Keys.Delete);
-    public HotkeyNode DumpHotkey { get; set; } = new HotkeyNode(System.Windows.Forms.Keys.F8);
+    public HotkeyNode CleanInventoryHotKey { get; set; } = new HotkeyNode(System.Windows.Forms.Keys.F8);
     public HotkeyNode RunHotkey { get; set; } = new HotkeyNode(System.Windows.Forms.Keys.F9);
     public HotkeyNode AtlasHotKey { get; set; } = new HotkeyNode(System.Windows.Forms.Keys.G);
     public HotkeyNode InventoryHotKey { get; set; } = new HotkeyNode(System.Windows.Forms.Keys.I);

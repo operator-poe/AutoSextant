@@ -134,12 +134,12 @@ public class PriceFetcher
     return entries;
   }
 
-  public async Task<Dictionary<string, PoeStackPrice>> Load()
+  public async Task<Dictionary<string, PoeStackPrice>> Load(bool ignoreFileAge = false)
   {
     try
     {
       var dataPath = AutoSextant.Instance.DirectoryFullName + "\\Data\\data.json";
-      if (!File.Exists(dataPath) || File.GetLastWriteTime(dataPath) < DateTime.Now.AddDays(-1))
+      if (!File.Exists(dataPath) || File.GetLastWriteTime(dataPath) < DateTime.Now.AddDays(-1) || ignoreFileAge)
       {
         return await Fetch();
       }

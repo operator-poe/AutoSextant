@@ -31,12 +31,33 @@ public class AutoSextant : BaseSettingsPlugin<AutoSextantSettings>
 
         Input.RegisterKey(Settings.RestockHotkey);
         Settings.RestockHotkey.OnValueChanged += () => { Input.RegisterKey(Settings.RestockHotkey); };
-        Input.RegisterKey(Settings.DumpHotkey);
-        Settings.DumpHotkey.OnValueChanged += () => { Input.RegisterKey(Settings.RestockHotkey); };
+        Input.RegisterKey(Settings.CleanInventoryHotKey);
+        Settings.CleanInventoryHotKey.OnValueChanged += () => { Input.RegisterKey(Settings.CleanInventoryHotKey); };
         Input.RegisterKey(Settings.RunHotkey);
-        Settings.RunHotkey.OnValueChanged += () => { Input.RegisterKey(Settings.RestockHotkey); };
+        Settings.RunHotkey.OnValueChanged += () => { Input.RegisterKey(Settings.RunHotkey); };
         Input.RegisterKey(Settings.CancelHotKey);
         Settings.RunHotkey.OnValueChanged += () => { Input.RegisterKey(Settings.CancelHotKey); };
+
+        Settings.UpdatePoeStackPrices.OnPressed += () =>
+        {
+            Log.Debug("Updating PoeStack prices");
+            var priceFetcher = new PoEStack.PriceFetcher();
+            var task = priceFetcher.Load(true);
+            task.ContinueWith((x) =>
+            {
+                Prices = x.Result;
+                CompassList.Prices.Clear();
+                foreach (var price in Prices.Values)
+                {
+                    CompassList.Prices.Add(price.Name, new CompassPrice
+                    {
+                        Name = price.Name,
+                        ChaosPrice = (int)price.Value,
+                        DivinePrice = 0
+                    });
+                }
+            });
+        };
 
 
         var priceFetcher = new PoEStack.PriceFetcher();
@@ -83,12 +104,14 @@ public class AutoSextant : BaseSettingsPlugin<AutoSextantSettings>
             return Core.ParallelRunner.FindByName(_restockCoroutineName) != null ||
                    Core.ParallelRunner.FindByName(_dumpCoroutineName) != null ||
                    Core.ParallelRunner.FindByName(_runCoroutineName) != null ||
-                   SellAssistant.SellAssistant.IsAnyRoutineRunning;
+                   SellAssistant.SellAssistant.IsAnyRoutineRunning ||
+                   DumpQueue.Count > 0;
         }
     }
 
     public void StopAllRoutines()
     {
+        DumpQueue.Clear();
         SellAssistant.SellAssistant.StopAllRoutines();
         var routine = Core.ParallelRunner.FindByName(_restockCoroutineName);
         routine?.Done();
@@ -103,6 +126,14 @@ public class AutoSextant : BaseSettingsPlugin<AutoSextantSettings>
 
     public override Job Tick()
     {
+        if (DumpQueue.Count > 0 && Core.ParallelRunner.FindByName(_dumpCoroutineName) == null)
+        {
+            var (mod, amount, callback) = DumpQueue[0];
+            DumpQueue.RemoveAt(0);
+            Core.ParallelRunner.Run(new Coroutine(Dump(mod, amount, callback), this, _dumpCoroutineName));
+        }
+
+
         if (Settings.CancelHotKey.PressedOnce())
         {
             StopAllRoutines();
@@ -121,16 +152,9 @@ public class AutoSextant : BaseSettingsPlugin<AutoSextantSettings>
             //     StopAllRoutines();
             // }
         }
-        if (Settings.DumpHotkey.PressedOnce())
+        if (Settings.CleanInventoryHotKey.PressedOnce())
         {
-            if (Core.ParallelRunner.FindByName(_dumpCoroutineName) == null)
-            {
-                Core.ParallelRunner.Run(new Coroutine(Dump(), this, _dumpCoroutineName));
-            }
-            else
-            {
-                StopAllRoutines();
-            }
+            TriggerCleanInventory();
         }
         if (Settings.RunHotkey.PressedOnce())
         {
@@ -158,6 +182,29 @@ public class AutoSextant : BaseSettingsPlugin<AutoSextantSettings>
         {
             yield return NStash.Stash.SelectTab("Currency");
         }
+    }
+
+    public void TriggerCleanInventory()
+    {
+        if (IsAnyRoutineRunning)
+            StopAllRoutines();
+        Core.ParallelRunner.Run(new Coroutine(CleanInventory(), this, _dumpCoroutineName));
+    }
+
+    public IEnumerator CleanInventory()
+    {
+        yield return EnsureStash();
+        yield return Dump();
+        yield return NStash.Stash.SelectTab(Settings.RestockSextantFrom);
+        var stashableCurrency = NInventory.Inventory.GetByName(Item.ItemNames[ItemType.Sextant], Item.ItemNames[ItemType.Compass]);
+        Input.HoldCtrl();
+        foreach (var item in stashableCurrency)
+        {
+            yield return Input.ClickElement(item.GetClientRect().Center);
+            yield return new WaitTime(10);
+        }
+        Input.ReleaseCtrl();
+        Stock.RunRefresh(true);
     }
 
     public IEnumerator Run()
@@ -279,17 +326,21 @@ public class AutoSextant : BaseSettingsPlugin<AutoSextantSettings>
         yield return new WaitFunctionTimed(() => GameController.IngameState.IngameUi.InventoryPanel != null && GameController.IngameState.IngameUi.InventoryPanel.IsVisible, true, 1000, "Inventory not opened");
     }
 
-    public void TriggerDump(string specificMod = null)
+    private static List<(string, int, Action<int>)> DumpQueue = new List<(string, int, Action<int>)>();
+
+    public void TriggerDump(string specificMod = null, int? specifiedAmount = null, Action<int> callback = null)
     {
-        Core.ParallelRunner.Run(new Coroutine(Dump(specificMod), this, _dumpCoroutineName));
+        DumpQueue.Add((specificMod, specifiedAmount ?? 60, callback));
     }
 
-    public IEnumerator Dump(string specificMod = null)
+    public IEnumerator Dump(string specificMod = null, int? specifiedAmount = null, Action<int> callback = null)
     {
         yield return EnsureStash();
 
         var dumpTabs = Settings.DumpTabs.Value.Split(',');
 
+        long leftToDump = specifiedAmount ?? 60;
+        long dumped = 0;
         while ((specificMod == null ? Inventory.TotalChargedCompasses : NInventory.Inventory.GetByModName(specificMod).Count()) > 0)
         {
             foreach (var tabName in dumpTabs)
@@ -309,20 +360,24 @@ public class AutoSextant : BaseSettingsPlugin<AutoSextantSettings>
                     continue;
                 }
                 var freeSlots = max - count;
-                var toDump = Math.Min(freeSlots, items.Count());
+                var toDump = Math.Min(Math.Min(freeSlots, items.Count()), leftToDump);
                 Input.KeyDown(System.Windows.Forms.Keys.ControlKey);
                 for (int i = 0; i < toDump; i++)
                 {
                     yield return Input.ClickElement(items[i].Position, 10);
                 }
+                leftToDump -= toDump;
+                dumped += toDump;
                 Input.KeyUp(System.Windows.Forms.Keys.ControlKey);
                 yield return new WaitTime(30);
-                if (toDump == items.Count())
+                if (toDump == items.Count() || leftToDump <= 0)
                 {
-                    break;
+                    callback?.Invoke((int)dumped);
+                    yield break;
                 }
             }
         }
+        callback?.Invoke((int)dumped);
     }
 
     public IEnumerator EnsureStash()
@@ -392,7 +447,7 @@ public class AutoSextant : BaseSettingsPlugin<AutoSextantSettings>
         {
             // Only stop the entire process on entry of this function as we can still work with a partial restock
             if (firstColumn)
-                StopAllRoutines();
+                TriggerCleanInventory();
             yield break;
         }
         var itemWidth = compassItem.GetClientRect().Width / 56 * 70;
