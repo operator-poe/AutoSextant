@@ -18,9 +18,11 @@ public class PriceFetcher
   {
       "compass",
   };
-  private List<string> _searchTerms = new List<string>
+  private List<(string, string)> _searchTerms = new List<(string, string)>
   {
-      "runic"
+      ("compass", "runic"),
+      ("currency", "awakened sextant"),
+      ("currency", "divine orb"),
   };
 
   private const string DefaultQuery =
@@ -56,7 +58,7 @@ public class PriceFetcher
         while (true)
         {
           DebugWindow.LogMsg($"Fetching data from poestack.com, offset: {fromOffset} search: {searchTerm}");
-          var responseObject = await GetEntriesAsync(client, "compass", searchTerm, fromOffset);
+          var responseObject = await GetEntriesAsync(client, searchTerm.Item1, searchTerm.Item2, fromOffset);
           entries.AddRange(responseObject);
           if (responseObject.Count() == 0)
           {

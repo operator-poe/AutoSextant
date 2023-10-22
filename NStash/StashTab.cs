@@ -38,6 +38,14 @@ public class StashTab
         }
     }
 
+    public int Capacity
+    {
+        get
+        {
+            return (int)(Ex.StashElement.AllInventories[_index].TotalBoxesInInventoryRow * Ex.StashElement.AllInventories[_index].TotalBoxesInInventoryRow);
+        }
+    }
+
     public ExileCore.PoEMemory.MemoryObjects.Inventory StashElement
     {
         get

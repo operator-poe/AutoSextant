@@ -73,12 +73,13 @@ public static class SessionWindow
     {
       if (ImGui.CollapsingHeader("Session Stats", ImGuiTreeNodeFlags.DefaultOpen))
       {
-        if (ImGui.BeginTable("SessionStatsTable", 5, ImGuiTableFlags.Borders | ImGuiTableFlags.RowBg | ImGuiTableFlags.Resizable | ImGuiTableFlags.NoSavedSettings))
+        if (ImGui.BeginTable("SessionStatsTable", 6, ImGuiTableFlags.Borders | ImGuiTableFlags.RowBg | ImGuiTableFlags.Resizable | ImGuiTableFlags.NoSavedSettings))
         {
           ImGui.TableSetupColumn("Sextants Used");
           ImGui.TableSetupColumn("Sextant Cost");
           ImGui.TableSetupColumn("Total Value");
           ImGui.TableSetupColumn("Profit Total");
+          ImGui.TableSetupColumn("Capacity");
           ImGui.TableSetupColumn("");
           ImGui.TableHeadersRow();
 
@@ -96,6 +97,9 @@ public static class SessionWindow
 
           ImGui.TableNextColumn();
           ImGui.Text(FormatChaosPrice(totalChaos - totalSpent));
+
+          ImGui.TableNextColumn();
+          ImGui.Text($"{Stock.Count}/{Stock.Capacity}");
 
           ImGui.TableNextColumn();
           if (ImGui.Button("Reset"))

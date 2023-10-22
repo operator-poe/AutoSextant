@@ -186,10 +186,11 @@ public static class SellAssistant
         {
             var item = items[i];
             yield return NStash.Stash.SelectTab(item.Item1);
-            Input.KeyDown(Keys.ControlKey);
-            yield return Input.ClickElement(item.Item2);
-            Input.KeyUp(Keys.ControlKey);
-            yield return new WaitTime(10);
+            yield return Input.ClickToInventory(item.Item2);
+            // Input.KeyDown(Keys.ControlKey);
+            // yield return Input.ClickElement(item.Item2);
+            // Input.KeyUp(Keys.ControlKey);
+            // yield return new WaitTime(10);
         }
 
         Stock.RunRefresh(() => RefreshTable());

@@ -285,7 +285,7 @@ public class Whisper
             {
                 if (request.Status == TradeRequestStatus.Accepted)
                 {
-                    if (request.ReceivedValue >= expectedValue * 0.99)
+                    if (request.ReceivedValue > 0 && request.ReceivedValue >= expectedValue * 0.99)
                         ValueReceived = expectedValue;
                     else
                         ValueReceived += request.ReceivedValue;
@@ -306,6 +306,7 @@ public class Whisper
                     item.Extracted -= quantity;
                 }
                 InInventory.Remove(mod);
+                Stock.RunRefresh();
             });
         }
     }

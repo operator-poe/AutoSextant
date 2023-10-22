@@ -45,11 +45,11 @@ public class Stash
     }
   }
 
-  public static NormalInventoryItem Compasses
+  public static List<NormalInventoryItem> Compasses
   {
     get
     {
-      return GetItemTypeFromStash("Surveyor's Compass").First();
+      return GetItemTypeFromStash("Surveyor's Compass");
     }
   }
 
@@ -58,6 +58,29 @@ public class Stash
     get
     {
       return GetItemTypeFromStash("Awakened Sextant");
+    }
+  }
+
+  public static Item NextSextant
+
+  {
+    get
+    {
+      var s = Sextants;
+      if (s.Count == 0)
+        return null;
+      return new Item(s.First());
+    }
+  }
+
+  public static Item NextCompass
+  {
+    get
+    {
+      var c = Compasses;
+      if (c == null)
+        return null;
+      return new Item(c.First());
     }
   }
 

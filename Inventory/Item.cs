@@ -67,7 +67,7 @@ public class Item
     Input.KeyDown(Keys.ShiftKey);
     Input.Click(MouseButtons.Left);
     Input.KeyUp(Keys.ShiftKey);
-    yield return new WaitFunctionTimed(() => Instance.GameController.IngameState.IngameUi.GetChildAtIndex(149) is { IsVisible: true }, true, 1000, "Split window not opened");
+    yield return new WaitFunctionTimed(() => Instance.GameController.IngameState.IngameUi.CurrencyShiftClickMenu is { IsVisible: true }, true, 1000, "Split window not opened");
     var numAsString = num.ToString();
 
     // iterate each number and send the key

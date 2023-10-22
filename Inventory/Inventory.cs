@@ -126,6 +126,7 @@ public class Inventory
     }
   }
 
+  private static float _cellSize = 0;
   public static Item NextFreeChargedCompassSlot
   {
     get
@@ -133,27 +134,31 @@ public class Inventory
       var inventoryPanel = Instance.GameController.Game.IngameState.IngameUi.InventoryPanel[InventoryIndex.PlayerInventory];
       Vector2 inventoryPanelPosition = inventoryPanel.InventoryUIElement.GetClientRect().TopLeft;
 
-      float cellSize = 0;
-      for (int x = 0; x < 12; x++)
+      float cellSize = _cellSize;
+      if (cellSize == 0)
       {
-        for (int y = 0; y < 5; y++)
+        for (int x = 0; x < 12; x++)
         {
-          var slot = GetSlotAt(x, y);
-          if (slot != null && slot.Item != null)
+          for (int y = 0; y < 5; y++)
           {
-            cellSize = slot.GetClientRect().Height;
+            var slot = GetSlotAt(x, y);
+            if (slot != null && slot.Item != null)
+            {
+              cellSize = slot.GetClientRect().Height;
+              _cellSize = cellSize;
+              break;
+            }
+          }
+          if (cellSize != 0)
+          {
             break;
           }
         }
-        if (cellSize != 0)
-        {
-          break;
-        }
       }
+      if (cellSize == 0)
+        cellSize = 50;
 
-
-
-      for (int x = 5; x < 12; x++)
+      for (int x = 0; x < 12; x++)
       {
         for (int y = 0; y < 5; y++)
         {

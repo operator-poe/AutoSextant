@@ -160,7 +160,7 @@ public class AutoSextant : BaseSettingsPlugin<AutoSextantSettings>
         {
             if (Core.ParallelRunner.FindByName(_runCoroutineName) == null)
             {
-                Core.ParallelRunner.Run(new Coroutine(Run(), this, _runCoroutineName));
+                Core.ParallelRunner.Run(new Coroutine(RunFromInventory(), this, _runCoroutineName));
             }
             else
             {
@@ -205,6 +205,163 @@ public class AutoSextant : BaseSettingsPlugin<AutoSextantSettings>
         }
         Input.ReleaseCtrl();
         Stock.RunRefresh(true);
+    }
+
+    public IEnumerator OpenAtlasInInventoryMode()
+    {
+        if (GameController.IngameState.IngameUi.Atlas.IsVisible && GameController.IngameState.IngameUi.InventoryPanel.IsVisible && GameController.IngameState.IngameUi.StashElement.IsVisible)
+        {
+            yield break;
+        }
+        yield return EnsureEverythingIsClosed();
+
+        var itemsOnGround = GameController.IngameState.IngameUi.ItemsOnGroundLabels;
+
+        foreach (LabelOnGround labelOnGround in itemsOnGround)
+        {
+            if (!labelOnGround.ItemOnGround.Path.Contains("/Stash"))
+            {
+                continue;
+            }
+            if (!labelOnGround.IsVisible)
+            {
+                Log.Error("Stash not visible");
+                yield break;
+            }
+            // click 150px to the right
+            yield return Input.ClickElement(labelOnGround.Label.GetClientRect().Center + new Vector2(150, 0));
+        }
+
+        yield return new WaitTime(800);
+
+
+        itemsOnGround = GameController.IngameState.IngameUi.ItemsOnGroundLabels;
+
+        foreach (LabelOnGround labelOnGround in itemsOnGround)
+        {
+            if (!labelOnGround.ItemOnGround.Path.Contains("/Stash"))
+            {
+                continue;
+            }
+            if (!labelOnGround.IsVisible)
+            {
+                Log.Error("Stash not visible");
+                yield break;
+            }
+            // click 150px to the right
+            yield return Input.ClickElement(labelOnGround.Label.GetClientRect().Center);
+        }
+
+        Input.KeyDown(Settings.AtlasHotKey.Value);
+        Input.KeyUp(Settings.AtlasHotKey.Value);
+
+        yield return new WaitFunctionTimed(() => GameController.IngameState.IngameUi.Atlas.IsVisible, true, 1000, "Atlas not opened");
+
+        Input.KeyDown(Settings.InventoryHotKey.Value);
+        Input.KeyUp(Settings.InventoryHotKey.Value);
+
+        yield return new WaitFunctionTimed(() => GameController.IngameState.IngameUi.InventoryPanel != null && GameController.IngameState.IngameUi.InventoryPanel.IsVisible && GameController.IngameState.IngameUi.StashElement.IsVisible, true, 1000, "Inventory not opened");
+    }
+
+    public IEnumerator RunFromInventory()
+    {
+        yield return Stock.Refresh();
+        yield return OpenAtlasInInventoryMode();
+
+        if (!Atlas.HasBlockMods)
+        {
+            LogError("No block mods");
+            yield break;
+        }
+
+        var stone = new VoidStone(VoidStonePosition.Top);
+        var maxCharged = 12 * 5;
+
+        var capacity = Stock.Capacity;
+        var totalStock = Stock.Count;
+        if (totalStock > capacity)
+        {
+            TriggerCleanInventory();
+            yield break;
+        }
+        var maxCompassesThisSession = Math.Min(maxCharged, capacity - totalStock);
+
+        var holdingShift = false;
+        while (Inventory.TotalChargedCompasses < maxCompassesThisSession)
+        {
+            yield return NStash.Stash.SelectTab(Settings.RestockSextantFrom);
+            var compassPrice = stone.Price;
+            var currentName = compassPrice?.Name ?? null;
+
+            bool capOk = true;
+            int index, cap;
+            string _;
+            bool never, always;
+            if (currentName != null)
+            {
+                index = Settings.ModSettings.FindIndex(x => x.Item1 == currentName);
+                (_, never, always, cap) = index != -1 ? Settings.ModSettings[index] : (currentName, false, false, 0);
+                capOk = cap > 0 ? Stock.Get(CompassList.PriceToModName[currentName]) < cap : true;
+            }
+
+            if (compassPrice == null || compassPrice.ChaosPrice < Settings.MinChaosValue || !capOk)
+            {
+                var nextSextant = Stash.NextSextant;
+                if (nextSextant == null)
+                {
+                    TriggerCleanInventory();
+                    break;
+                }
+                if (!holdingShift)
+                {
+                    holdingShift = true;
+                    Input.KeyDown(System.Windows.Forms.Keys.ShiftKey);
+                    yield return Input.ClickElement(nextSextant.Position, System.Windows.Forms.MouseButtons.Right);
+                }
+                yield return Input.ClickElement(stone.Position);
+                SessionWindow.IncreaseSextantCount();
+                yield return new WaitFunctionTimed(() => stone.Price != null && stone.Price.Name != currentName, false, 50);
+                if (stone.Price == null || stone.Price.Name == currentName)
+                {
+                    yield return new WaitTime(50);
+                    // Didn't work or was the same, try again
+                    continue;
+                }
+            }
+
+            compassPrice = stone.Price;
+
+            index = Settings.ModSettings.FindIndex(x => x.Item1 == compassPrice.Name);
+            (_, never, always, cap) = index != -1 ? Settings.ModSettings[index] : (compassPrice.Name, false, false, 0);
+
+            capOk = cap > 0 ? Stock.Get(CompassList.PriceToModName[compassPrice.Name]) < cap : true;
+            if ((!never && stone.Price != null && compassPrice.ChaosPrice >= Settings.MinChaosValue && capOk) || (always && capOk))
+            {
+                holdingShift = false;
+                Input.KeyUp(System.Windows.Forms.Keys.ShiftKey);
+                var nextCompass = Stash.NextCompass;
+                var nextFreeSlot = Inventory.NextFreeChargedCompassSlot;
+                if (nextCompass == null || nextFreeSlot == null)
+                {
+                    break;
+                }
+                yield return Input.ClickElement(nextCompass.Position, System.Windows.Forms.MouseButtons.Right);
+                yield return Input.ClickElement(stone.Position);
+                SessionWindow.AddMod(compassPrice.Name);
+                var count = NInventory.Inventory.InventoryCount;
+                while (NInventory.Inventory.InventoryCount == count)
+                {
+                    yield return Input.ClickElement(nextFreeSlot.Position);
+                    yield return new WaitTime(10);
+                }
+            }
+        }
+        holdingShift = false;
+        Input.KeyUp(System.Windows.Forms.Keys.ShiftKey);
+
+        yield return Dump();
+
+        yield return RunFromInventory();
     }
 
     public IEnumerator Run()
@@ -516,6 +673,10 @@ public class AutoSextant : BaseSettingsPlugin<AutoSextantSettings>
 
     public override void Render()
     {
+        if (IsAnyRoutineRunning)
+        {
+            Graphics.DrawText("AutoSextant is busy", new System.Numerics.Vector2(100, 100), Color.Red, 20);
+        }
         SessionWindow.Render();
         Error.Render();
         SellAssistant.SellAssistant.Render();

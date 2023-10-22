@@ -19,10 +19,32 @@ public class Input : ExileCore.Input
     yield return Delay(delay);
   }
 
+  public static IEnumerator ClickToInventory(Vector2 pos)
+  {
+    var count = NInventory.Inventory.InventoryCount;
+    while (count == NInventory.Inventory.InventoryCount)
+    {
+      Input.KeyDown(Keys.ControlKey);
+      yield return ClickElement(pos, 10);
+      Input.KeyUp(Keys.ControlKey);
+      // TODO: maybe actually group those and wait for all of them to be done?
+      yield return new WaitFunctionTimed(() => NInventory.Inventory.InventoryCount != count, false, 50);
+    }
+  }
+
 
   public static IEnumerator ClickElement(Vector2 pos, int delay)
   {
     yield return ClickElement(pos, MouseButtons.Left, delay);
+  }
+
+  public static IEnumerator ClickElement(RectangleF rect, int delay = 30)
+  {
+    Random rnd = new Random();
+    int rndX = rnd.Next((int)rect.X, (int)rect.X + (int)rect.Width);
+    int rndY = rnd.Next((int)rect.Y, (int)rect.Y + (int)rect.Height);
+
+    yield return ClickElement(new Vector2(rndX, rndY), delay);
   }
 
   // public static new IEnumerator Click(MouseButtons mouseButton = MouseButtons.Left)
