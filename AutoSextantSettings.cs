@@ -132,6 +132,8 @@ public class AutoSextantSettings : ISettings
     [Menu("Extra Delay", "Delay to wait after each inventory clearing attempt(in ms).")]
     public RangeNode<int> ExtraDelay { get; set; }
 
+    public ToggleNode EnableSellAssistant { get; set; } = new ToggleNode(false);
+
     public HotkeyNode RestockHotkey { get; set; } = new HotkeyNode(System.Windows.Forms.Keys.F7);
     public HotkeyNode CancelHotKey { get; set; } = new HotkeyNode(System.Windows.Forms.Keys.Delete);
     public HotkeyNode CleanInventoryHotKey { get; set; } = new HotkeyNode(System.Windows.Forms.Keys.F8);

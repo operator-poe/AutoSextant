@@ -52,8 +52,6 @@ public static class SellAssistant
 
     private static AutoSextant I = AutoSextant.Instance;
 
-    private static (System.Numerics.Vector2, System.Numerics.Vector2) _windowPos = (System.Numerics.Vector2.Zero, System.Numerics.Vector2.Zero);
-
     public static readonly string _sellAssistantInitCoroutineName = "AutoSextant.SellAssistant.SellAssistant.Init";
     public static readonly string _sellAssistantTakeFromStashCoroutineName = "AutoSextant.SellAssistant.SellAssistant.TakeFromStash";
     private static List<(string, int, Action)> ExtractionQueue = new List<(string, int, Action)>();
@@ -89,8 +87,8 @@ public static class SellAssistant
 
     public static void Enable()
     {
+        Log.Debug("Enabling SellAssistant");
         var inventoryRect = I.GameController.Game.IngameState.IngameUi.InventoryPanel.GetClientRect();
-        _windowPos = (new System.Numerics.Vector2(inventoryRect.X, inventoryRect.Y), new System.Numerics.Vector2(inventoryRect.Width, inventoryRect.Height / 2));
 
         ExecuteOnNextTick(() =>
         {
@@ -101,9 +99,9 @@ public static class SellAssistant
 
     public static void Disable()
     {
+        Log.Debug("Disabling SellAssistant");
         selectedAmount = 1;
         selectedMod = "";
-        _windowPos = (System.Numerics.Vector2.Zero, System.Numerics.Vector2.Zero);
         selectedFilter = "";
         CurrentReport = null;
         StopAllRoutines();
@@ -249,7 +247,7 @@ public static class SellAssistant
         var show = _enabled;
 
         ImGui.Begin("AutoSextant SellAssistant", ref show);
-        _enabled = show;
+        AutoSextant.Instance.Settings.EnableSellAssistant.Value = show;
 
         ImGui.BeginChild("Top Pane", new System.Numerics.Vector2(-1, 120));
         if (CurrentReport != null)

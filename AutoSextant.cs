@@ -130,6 +130,10 @@ public class AutoSextant : BaseSettingsPlugin<AutoSextantSettings>
             DumpQueue.RemoveAt(0);
             Core.ParallelRunner.Run(new Coroutine(Dump(mod, amount, callback), this, _dumpCoroutineName));
         }
+        if (Settings.EnableSellAssistant && !SellAssistant.SellAssistant.Enabled)
+            SellAssistant.SellAssistant.Enable();
+        else if (!Settings.EnableSellAssistant && SellAssistant.SellAssistant.Enabled)
+            SellAssistant.SellAssistant.Disable();
 
 
         if (Settings.CancelHotKey.PressedOnce())
@@ -139,7 +143,7 @@ public class AutoSextant : BaseSettingsPlugin<AutoSextantSettings>
         }
         if (Settings.RestockHotkey.PressedOnce())
         {
-            SellAssistant.SellAssistant.Enable();
+            Settings.EnableSellAssistant.Value = true;
             // Core.ParallelRunner.Run(new Coroutine(Test(), this, _restockCoroutineName));
             // if (Core.ParallelRunner.FindByName(_restockCoroutineName) == null)
             // {
