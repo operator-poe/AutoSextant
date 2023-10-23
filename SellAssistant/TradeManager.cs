@@ -343,12 +343,14 @@ public static class TradeManager
 
         while (TradeWindow is { IsVisible: true })
         {
+            Log.Debug("In outer loop");
             yield return new WaitTime(50);
             if (ActiveTrade.ExpectedValue > 0)
             {
                 HashSet<int> itemsHovered = new HashSet<int>();
                 while (TotalChaosValue < (ActiveTrade.ExpectedValue + ChangeAmount) * 0.99 || ItemsLeftToHover)
                 {
+                    Log.Debug("In inner loop");
                     if (TradeWindow is { IsVisible: false })
                     {
                         break;
@@ -382,10 +384,12 @@ public static class TradeManager
             }
             if (TradeWindow is { IsVisible: false })
             {
+                Log.Debug("Trade window closed, breaking");
                 break;
             }
             if (!TradeWindow.SellerAccepted)
             {
+                Log.Debug("Accept trade");
                 ActiveTrade.ReceivedValue = TotalChaosValue;
                 yield return Input.ClickElement(TradeWindow.AcceptButton.GetClientRect().Center);
             }

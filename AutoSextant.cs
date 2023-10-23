@@ -1,26 +1,22 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
-using System.Threading.Tasks;
 using ExileCore;
-using ExileCore.PoEMemory.Elements.AtlasElements;
 using ExileCore.PoEMemory.MemoryObjects;
 using ExileCore.Shared;
-using ExileCore.PoEMemory.Components;
 using SharpDX;
-using GameOffsets.Components;
 using ExileCore.Shared.Enums;
 using System.Linq;
-using System.Diagnostics;
 using ExileCore.PoEMemory.Elements;
 using System;
+using System.Security;
+using System.Threading.Tasks;
+using AutoSextant.PoEStack;
 
 namespace AutoSextant;
 
 public class AutoSextant : BaseSettingsPlugin<AutoSextantSettings>
 {
     internal static AutoSextant Instance;
-
-    public Dictionary<string, PoEStack.PoeStackPrice> Prices { get; set; } = new Dictionary<string, PoEStack.PoeStackPrice>();
 
     public override bool Initialise()
     {
@@ -38,33 +34,14 @@ public class AutoSextant : BaseSettingsPlugin<AutoSextantSettings>
         Input.RegisterKey(Settings.CancelHotKey);
         Settings.RunHotkey.OnValueChanged += () => { Input.RegisterKey(Settings.CancelHotKey); };
 
-        Settings.UpdatePoeStackPrices.OnPressed += () =>
+        Settings.UpdatePoeStackPrices.OnPressed += async () =>
         {
             Log.Debug("Updating PoeStack prices");
             var priceFetcher = new PoEStack.PriceFetcher();
-            var task = priceFetcher.Load(true);
-            task.ContinueWith((x) =>
-            {
-                Prices = x.Result;
-                CompassList.Prices.Clear();
-                foreach (var price in Prices.Values)
-                {
-                    CompassList.Prices.Add(price.Name, new CompassPrice
-                    {
-                        Name = price.Name,
-                        ChaosPrice = (int)price.Value,
-                        DivinePrice = 0
-                    });
-                }
-            });
-        };
-
-
-        var priceFetcher = new PoEStack.PriceFetcher();
-        var task = priceFetcher.Load();
-        task.ContinueWith((x) =>
-        {
-            Prices = x.Result;
+            (Dictionary<string, PoeStackPrice>, Dictionary<string, PoeStackPrice>) result = await priceFetcher.Load(true);
+            var Prices = result.Item1;
+            var CurrencyPrices = result.Item2;
+            // var (Prices, CurrencyPrices) = x.Result;
             CompassList.Prices.Clear();
             foreach (var price in Prices.Values)
             {
@@ -75,6 +52,27 @@ public class AutoSextant : BaseSettingsPlugin<AutoSextantSettings>
                     DivinePrice = 0
                 });
             }
+            CompassList.DivinePrice = (float)CurrencyPrices["Divine Orb"].Value;
+            CompassList.AwakenedSextantPrice = (float)CurrencyPrices["Awakened Sextant"].Value;
+        };
+
+        var priceFetcher = new PoEStack.PriceFetcher();
+        var task = priceFetcher.Load();
+        task.ContinueWith((x) =>
+        {
+            var result = x.Result;
+            CompassList.Prices.Clear();
+            foreach (var price in result.Item1.Values)
+            {
+                CompassList.Prices.Add(price.Name, new CompassPrice
+                {
+                    Name = price.Name,
+                    ChaosPrice = (int)price.Value,
+                    DivinePrice = 0
+                });
+            }
+            CompassList.DivinePrice = (float)result.Item2["Divine Orb"].Value;
+            CompassList.AwakenedSextantPrice = (float)result.Item2["Awakened Sextant"].Value;
         });
 
 
@@ -204,7 +202,7 @@ public class AutoSextant : BaseSettingsPlugin<AutoSextantSettings>
             yield return new WaitTime(10);
         }
         Input.ReleaseCtrl();
-        Stock.RunRefresh(true);
+        Stock.RunRefresh();
     }
 
     public IEnumerator OpenAtlasInInventoryMode()

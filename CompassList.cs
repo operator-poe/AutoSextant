@@ -12,6 +12,8 @@ public class CompassPrice
 
 public static class CompassList
 {
+  public static float DivinePrice = 0;
+  public static float AwakenedSextantPrice = 0;
   public static Dictionary<string, string> PriceToModName = new Dictionary<string, string>{
       {"Strongbox Enraged", "MapAtlasStrongboxMonstersEnrageAndDrops"},
       {"8 Modifiers", "MapAtlasMapDropsAreCorruptedAndHave8Modifiers"},

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using ImGuiNET;
 
@@ -11,14 +12,14 @@ public static class SessionWindow
   {
     get
     {
-      return 232.0f;
+      return CompassList.DivinePrice;
     }
   }
   public static float SextantPrice
   {
     get
     {
-      return DivinePrice / 39.0f;
+      return CompassList.AwakenedSextantPrice;
     }
   }
   public static bool Show
@@ -73,13 +74,16 @@ public static class SessionWindow
     {
       if (ImGui.CollapsingHeader("Session Stats", ImGuiTreeNodeFlags.DefaultOpen))
       {
-        if (ImGui.BeginTable("SessionStatsTable", 6, ImGuiTableFlags.Borders | ImGuiTableFlags.RowBg | ImGuiTableFlags.Resizable | ImGuiTableFlags.NoSavedSettings))
+        if (ImGui.BeginTable("SessionStatsTable", 9, ImGuiTableFlags.Borders | ImGuiTableFlags.RowBg | ImGuiTableFlags.Resizable | ImGuiTableFlags.NoSavedSettings))
         {
           ImGui.TableSetupColumn("Sextants Used");
           ImGui.TableSetupColumn("Sextant Cost");
           ImGui.TableSetupColumn("Total Value");
           ImGui.TableSetupColumn("Profit Total");
           ImGui.TableSetupColumn("Capacity");
+          ImGui.TableSetupColumn("Free Slots");
+          ImGui.TableSetupColumn("Divine Price");
+          ImGui.TableSetupColumn("Sextant Price");
           ImGui.TableSetupColumn("");
           ImGui.TableHeadersRow();
 
@@ -99,7 +103,18 @@ public static class SessionWindow
           ImGui.Text(FormatChaosPrice(totalChaos - totalSpent));
 
           ImGui.TableNextColumn();
-          ImGui.Text($"{Stock.Count}/{Stock.Capacity}");
+          var count = Stock.Count;
+          var capacity = Stock.Capacity;
+          ImGui.Text($"{count}/{capacity}");
+
+          ImGui.TableNextColumn();
+          ImGui.Text((capacity - count).ToString());
+
+          ImGui.TableNextColumn();
+          ImGui.Text(DivinePrice.ToString("0.0", CultureInfo.InvariantCulture) + "c");
+
+          ImGui.TableNextColumn();
+          ImGui.Text(SextantPrice.ToString("0.0", CultureInfo.InvariantCulture) + "c");
 
           ImGui.TableNextColumn();
           if (ImGui.Button("Reset"))

@@ -283,12 +283,9 @@ public class Whisper
             Items = InInventory,
             Callback = (request) =>
             {
-                if (request.Status == TradeRequestStatus.Accepted)
+                if (request.Status == TradeRequestStatus.Accepted && expectedValue > 0)
                 {
-                    if (request.ReceivedValue > 0 && request.ReceivedValue >= expectedValue * 0.99)
-                        ValueReceived = expectedValue;
-                    else
-                        ValueReceived += request.ReceivedValue;
+                    ValueReceived += (request.ReceivedValue >= expectedValue * 0.99) ? expectedValue : request.ReceivedValue;
                 }
             }
         });

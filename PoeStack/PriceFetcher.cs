@@ -9,6 +9,7 @@ using ExileCore;
 using Newtonsoft.Json;
 using AutoSextant.PoEStack.Api.Request;
 using AutoSextant.PoEStack.Api.Response;
+using System.Globalization;
 
 namespace AutoSextant.PoEStack;
 
@@ -28,7 +29,7 @@ public class PriceFetcher
   private const string DefaultQuery =
     "query Query($search: LivePricingSummarySearch!) {livePricingSummarySearch(search: $search) {entries {itemGroup {key,displayName,properties}valuation{value}stockValuation{value}}}}";
 
-  public async Task<Dictionary<string, PoeStackPrice>> Fetch()
+  public async Task<(Dictionary<string, PoeStackPrice>, Dictionary<string, PoeStackPrice>)> Fetch()
   {
     Log.Debug("Fetching data from poestack.com");
     try
@@ -44,7 +45,7 @@ public class PriceFetcher
           Log.Debug($"Fetching data from poestack.com, offset: {fromOffset} tag: {_tag}");
           var responseObject = await GetEntriesAsync(client, _tag, "", fromOffset);
           entries.AddRange(responseObject);
-          if (responseObject.Count() == 0)
+          if (responseObject.Count() == 0 || responseObject.Count() < 40)
           {
             break;
           }
@@ -60,7 +61,7 @@ public class PriceFetcher
           DebugWindow.LogMsg($"Fetching data from poestack.com, offset: {fromOffset} search: {searchTerm}");
           var responseObject = await GetEntriesAsync(client, searchTerm.Item1, searchTerm.Item2, fromOffset);
           entries.AddRange(responseObject);
-          if (responseObject.Count() == 0)
+          if (responseObject.Count() == 0 || responseObject.Count() < 40)
           {
             break;
           }
@@ -89,17 +90,36 @@ public class PriceFetcher
           })
           .ToDictionary(x => x.Name, x => x);
 
+      var currencyValues = entries
+          .Where(x => x.itemGroup != null && x.valuation != null)
+          .Where(x => x.itemGroup.key == "divine orb" || x.itemGroup.key == "awakened sextant")
+          .GroupBy(x => x.itemGroup.key)
+          .Select(x => x.First())
+          .Select(x =>
+          {
+            return new PoeStackPrice
+            {
+              Key = x.itemGroup.key,
+              Name = CultureInfo.CurrentCulture.TextInfo.ToTitleCase(x.itemGroup.key),
+              Value = x.valuation.value,
+              StockValue = x.stockValuation?.value ?? 0,
+              Uses = 1,
+            };
+          })
+          .ToDictionary(x => x.Name, x => x);
 
       var dataPath = AutoSextant.Instance.DirectoryFullName + "\\Data\\data.json";
       await SaveToFile(JsonConvert.SerializeObject(prices), dataPath);
+      dataPath = AutoSextant.Instance.DirectoryFullName + "\\Data\\currency.json";
+      await SaveToFile(JsonConvert.SerializeObject(currencyValues), dataPath);
 
       Log.Debug("Data update complete");
-      return prices;
+      return (prices, currencyValues);
     }
     catch (Exception ex)
     {
       Log.Error(ex.ToString());
-      return null;
+      return (null, null);
     }
   }
 
@@ -136,7 +156,7 @@ public class PriceFetcher
     return entries;
   }
 
-  public async Task<Dictionary<string, PoeStackPrice>> Load(bool ignoreFileAge = false)
+  public async Task<(Dictionary<string, PoeStackPrice>, Dictionary<string, PoeStackPrice>)> Load(bool ignoreFileAge = false)
   {
     try
     {
@@ -147,12 +167,14 @@ public class PriceFetcher
       }
 
       var data = await File.ReadAllTextAsync(dataPath);
-      return JsonConvert.DeserializeObject<Dictionary<string, PoeStackPrice>>(data);
+      dataPath = AutoSextant.Instance.DirectoryFullName + "\\Data\\currency.json";
+      var data2 = await File.ReadAllTextAsync(dataPath);
+      return (JsonConvert.DeserializeObject<Dictionary<string, PoeStackPrice>>(data), JsonConvert.DeserializeObject<Dictionary<string, PoeStackPrice>>(data2));
     }
     catch (Exception ex)
     {
-      DebugWindow.LogError(ex.ToString());
-      return null;
+      Log.Error(ex.ToString());
+      return (null, null);
     }
   }
 
