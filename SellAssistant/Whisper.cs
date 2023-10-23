@@ -13,6 +13,13 @@ public class WhisperItem
     public int Quantity { get; set; }
     public int Extracted { get; set; } = 0;
     public string Uuid { get; set; } = Guid.NewGuid().ToString();
+    public int Available
+    {
+        get
+        {
+            return Stock.Get(ModName);
+        }
+    }
 
     public FullfillmentStatus Status
     {
@@ -308,6 +315,22 @@ public class Whisper
         }
     }
 
+    public void SendPartial()
+    {
+        if (SellAssistant.CurrentReport == null)
+            return;
+
+        var response = $"@{PlayerName} Sorry, some are sold out, I can do ";
+        var items = Items.Select(x => $"{Math.Min(x.Available, x.Quantity)} {x.Name}");
+        var itemsString = string.Join(", ", items);
+        response += itemsString;
+
+        Items.ForEach(x => x.Quantity = Math.Min(x.Quantity, x.Available));
+        response += $" for a new total of {Price}. Still interested?";
+
+        Chat.QueueMessage(response);
+    }
+
 
     public List<(Keys, string, Action)> GetButtonsForWhisper()
     {
@@ -330,36 +353,22 @@ public class Whisper
                 ButtonSelection = ButtonSelection.None;
             }
             ));
-            if (Items.Count == 1 && Items[0].Status == FullfillmentStatus.NotEnough)
+            if (Items.Any(x => x.Status == FullfillmentStatus.NotEnough || x.Status == FullfillmentStatus.NotAvailable) && !Items.All(x => x.Status == FullfillmentStatus.NotEnough))
             {
-                var Item = Items[0];
-                buttons.Add((Keys.NumPad2, $"Partial", new Action(() =>
+                buttons.Add((Keys.NumPad2, $"Partial", () =>
                 {
-                    var count = Stock.Get(Item.ModName);
-                    if (SellAssistant.CurrentReport != null)
-                    {
-                        var priceString = SellAssistant.CurrentReport.AmountToString(Item.Name, count);
-                        if (priceString != null)
-                            Chat.QueueMessage($"@{PlayerName} {count} {Item.Name} left for {priceString}, still interested?");
-                        else
-                            Chat.QueueMessage($"@{PlayerName} I only have {count} {Item.Name} left, still interested?");
-                    }
-                    else
-                    {
-                        Chat.QueueMessage($"@{PlayerName} I only have {count} {Item.Name} left, still interested?");
-                    }
-                    HasSentPartial = true;
-                    Item.Quantity = count;
+                    SendPartial();
                     ButtonSelection = ButtonSelection.None;
-                })
+                }
                 ));
             }
 
-            if (Items.Any(x => x.Status == FullfillmentStatus.NotAvailable))
+            if (Items.All(x => x.Status == FullfillmentStatus.NotAvailable))
             {
                 buttons.Add((Keys.NumPad3, $"Sold", new Action(() =>
                 {
-                    Chat.QueueMessage($"@{PlayerName} Sorry, all my \"{Items.Find(x => x.Status == FullfillmentStatus.NotAvailable)?.Name}\" are sold");
+                    var items = string.Join(", ", Items.Select(x => x.Name));
+                    Chat.QueueMessage($"@{PlayerName} Sorry, all my {items} are sold");
                     Hidden = true;
                 })
                 ));
