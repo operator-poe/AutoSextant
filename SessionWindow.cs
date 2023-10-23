@@ -26,7 +26,7 @@ public static class SessionWindow
   {
     get
     {
-      return AutoSextant.Instance.GameController.Game.IngameState.IngameUi.Atlas.IsVisible;
+      return AutoSextant.Instance.Settings.EnableSessionWindow && AutoSextant.Instance.GameController.Game.IngameState.IngameUi.Atlas.IsVisible;
     }
   }
 

@@ -133,6 +133,7 @@ public class AutoSextantSettings : ISettings
     public RangeNode<int> ExtraDelay { get; set; }
 
     public ToggleNode EnableSellAssistant { get; set; } = new ToggleNode(false);
+    public ToggleNode EnableSessionWindow { get; set; } = new ToggleNode(true);
 
     public HotkeyNode RestockHotkey { get; set; } = new HotkeyNode(System.Windows.Forms.Keys.F7);
     public HotkeyNode CancelHotKey { get; set; } = new HotkeyNode(System.Windows.Forms.Keys.Delete);
