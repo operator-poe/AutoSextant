@@ -19,6 +19,20 @@ public class Input : ExileCore.Input
     yield return Delay(delay);
   }
 
+  public static IEnumerator UseItem(Vector2 pos, int delay = 10)
+  {
+    MoveMouseToElement(pos);
+    yield return Delay(delay);
+    yield return Cursor.ReleaseItemOnCursor();
+    yield return Delay(delay);
+
+    while (!Cursor.HasItem)
+    {
+      Click(MouseButtons.Right);
+      yield return new WaitFunctionTimed(() => Cursor.HasItem && Cursor.ItemName == null, false, 50);
+    }
+  }
+
   public static IEnumerator ClickToInventory(Vector2 pos)
   {
     var count = NInventory.Inventory.InventoryCount;

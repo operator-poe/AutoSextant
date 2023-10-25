@@ -372,7 +372,7 @@ public static class SellAssistant
             ImGui.TableSetupColumn("Total Value", ImGuiTableColumnFlags.WidthFixed, tableWidth * 0.3f);
             ImGui.TableHeadersRow();
 
-            foreach (var c in CompassList.PriceToModName)
+            foreach (var c in CompassList.PriceToModName.OrderBy(x => x.Key))
             {
                 var tft = c.Key;
                 ImGui.PushID(tft);

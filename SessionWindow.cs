@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using AutoSextant.SellAssistant;
 using ImGuiNET;
 
 namespace AutoSextant;
@@ -52,38 +53,25 @@ public static class SessionWindow
     _sextantsUsed = 0;
     _modCount.Clear();
   }
-
-  private static string FormatChaosPrice(float value)
-  {
-    if (Math.Abs(value) < DivinePrice)
-      return $"{value.ToString("0.0")}c";
-
-    int divines = (int)(value / DivinePrice);
-    float chaos = value % DivinePrice;
-    return $"{divines} div, {chaos.ToString("0.0")}c";
-  }
-
   public static void Render()
   {
     if (!Show)
     {
       return;
     }
+    bool show = AutoSextant.Instance.Settings.EnableSessionWindow.Value;
 
-    if (ImGui.Begin("SessionWindow"))
+    if (ImGui.Begin("SessionWindow", ref show))
     {
+      AutoSextant.Instance.Settings.EnableSessionWindow.Value = show;
       if (ImGui.CollapsingHeader("Session Stats", ImGuiTreeNodeFlags.DefaultOpen))
       {
-        if (ImGui.BeginTable("SessionStatsTable", 9, ImGuiTableFlags.Borders | ImGuiTableFlags.RowBg | ImGuiTableFlags.Resizable | ImGuiTableFlags.NoSavedSettings))
+        if (ImGui.BeginTable("SessionStatsTable", 5, ImGuiTableFlags.Borders | ImGuiTableFlags.RowBg | ImGuiTableFlags.Resizable | ImGuiTableFlags.NoSavedSettings))
         {
           ImGui.TableSetupColumn("Sextants Used");
-          ImGui.TableSetupColumn("Sextant Cost");
-          ImGui.TableSetupColumn("Total Value");
-          ImGui.TableSetupColumn("Profit Total");
-          ImGui.TableSetupColumn("Capacity");
-          ImGui.TableSetupColumn("Free Slots");
-          ImGui.TableSetupColumn("Divine Price");
-          ImGui.TableSetupColumn("Sextant Price");
+          ImGui.TableSetupColumn("Session Cost");
+          ImGui.TableSetupColumn("Session Value");
+          ImGui.TableSetupColumn("Profit Session");
           ImGui.TableSetupColumn("");
           ImGui.TableHeadersRow();
 
@@ -93,15 +81,33 @@ public static class SessionWindow
 
           ImGui.TableNextColumn();
           var totalSpent = _sextantsUsed * SextantPrice;
-          ImGui.Text(FormatChaosPrice(totalSpent));
+          ImGui.Text(Util.FormatChaosPrice(totalSpent, DivinePrice));
 
           ImGui.TableNextColumn();
           var totalChaos = _modCount.Sum(x => CompassList.Prices[x.Key].ChaosPrice * x.Value);
-          ImGui.Text(FormatChaosPrice(totalChaos));
+          ImGui.Text(Util.FormatChaosPrice(totalChaos, DivinePrice));
 
           ImGui.TableNextColumn();
-          ImGui.Text(FormatChaosPrice(totalChaos - totalSpent));
+          ImGui.Text(Util.FormatChaosPrice(totalChaos - totalSpent, DivinePrice));
 
+          ImGui.TableNextColumn();
+          if (ImGui.Button("Reset"))
+          {
+            Reset();
+          }
+
+          ImGui.EndTable();
+        }
+        if (ImGui.BeginTable("SessionStatsTableStock", 4, ImGuiTableFlags.Borders | ImGuiTableFlags.RowBg | ImGuiTableFlags.Resizable | ImGuiTableFlags.NoSavedSettings))
+        {
+
+          ImGui.TableSetupColumn("Capacity");
+          ImGui.TableSetupColumn("Free Slots");
+          ImGui.TableSetupColumn("Divine Price");
+          ImGui.TableSetupColumn("Sextant Price");
+          ImGui.TableHeadersRow();
+
+          ImGui.TableNextRow();
           ImGui.TableNextColumn();
           var count = Stock.Count;
           var capacity = Stock.Capacity;
@@ -115,12 +121,6 @@ public static class SessionWindow
 
           ImGui.TableNextColumn();
           ImGui.Text(SextantPrice.ToString("0.0", CultureInfo.InvariantCulture) + "c");
-
-          ImGui.TableNextColumn();
-          if (ImGui.Button("Reset"))
-          {
-            Reset();
-          }
 
           ImGui.EndTable();
         }
@@ -149,14 +149,14 @@ public static class SessionWindow
             ImGui.TableNextColumn();
             ImGui.Text(mod.Item1);
             ImGui.TableNextColumn();
-            ImGui.Text(FormatChaosPrice(CompassList.Prices[mod.Item1].ChaosPrice));
+            ImGui.Text(Util.FormatChaosPrice(CompassList.Prices[mod.Item1].ChaosPrice, DivinePrice));
             ImGui.TableNextColumn();
             ImGui.Text(Stock.Get(CompassList.PriceToModName[mod.Item1]).ToString());
             ImGui.TableNextColumn();
             ImGui.Text(mod.Item2.ToString());
             ImGui.TableNextColumn();
 
-            ImGui.Text(FormatChaosPrice(mod.Item3));
+            ImGui.Text(Util.FormatChaosPrice(mod.Item3, DivinePrice));
           }
 
           ImGui.EndTable();

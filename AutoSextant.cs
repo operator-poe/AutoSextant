@@ -107,7 +107,7 @@ public class AutoSextant : BaseSettingsPlugin<AutoSextantSettings>
         }
     }
 
-    public void StopAllRoutines()
+    public void StopAllRoutines(Action callback = null)
     {
         DumpQueue.Clear();
         SellAssistant.SellAssistant.StopAllRoutines();
@@ -120,6 +120,7 @@ public class AutoSextant : BaseSettingsPlugin<AutoSextantSettings>
         Input.ReleaseCtrl();
         Input.ReleaseShift();
         Input.UnblockMouse();
+        Core.ParallelRunner.Run(new Coroutine(Cursor.ReleaseItemOnCursor(callback), this, _dumpCoroutineName));
     }
 
     public override Job Tick()
@@ -188,14 +189,16 @@ public class AutoSextant : BaseSettingsPlugin<AutoSextantSettings>
 
     public void TriggerCleanInventory()
     {
-        if (IsAnyRoutineRunning)
-            StopAllRoutines();
-        Core.ParallelRunner.Run(new Coroutine(CleanInventory(), this, _dumpCoroutineName));
+        StopAllRoutines(() =>
+        {
+            Core.ParallelRunner.Run(new Coroutine(CleanInventory(), this, "AutoSextant_CleanInventory"));
+        });
     }
 
     public IEnumerator CleanInventory()
     {
         yield return EnsureStash();
+        yield return Cursor.ReleaseItemOnCursor();
         yield return Dump();
         yield return NStash.Stash.SelectTab(Settings.RestockSextantFrom);
         var stashableCurrency = NInventory.Inventory.GetByName(Item.ItemNames[ItemType.Sextant], Item.ItemNames[ItemType.Compass]);
@@ -289,6 +292,7 @@ public class AutoSextant : BaseSettingsPlugin<AutoSextantSettings>
         var maxCompassesThisSession = Math.Min(maxCharged, capacity - totalStock);
 
         var holdingShift = false;
+        // TODO: attempt counter, then if too many, clear cursor and try again
         while (Inventory.TotalChargedCompasses < maxCompassesThisSession)
         {
             yield return NStash.Stash.SelectTab(Settings.RestockSextantFrom);
@@ -316,16 +320,18 @@ public class AutoSextant : BaseSettingsPlugin<AutoSextantSettings>
                 }
                 if (!holdingShift)
                 {
+                    yield return Input.UseItem(nextSextant.Position);
                     holdingShift = true;
                     Input.KeyDown(System.Windows.Forms.Keys.ShiftKey);
-                    yield return Input.ClickElement(nextSextant.Position, System.Windows.Forms.MouseButtons.Right);
                 }
                 yield return Input.ClickElement(stone.Position);
                 SessionWindow.IncreaseSextantCount();
                 yield return new WaitFunctionTimed(() => stone.Price != null && stone.Price.Name != currentName, false, 50);
                 if (stone.Price == null || stone.Price.Name == currentName)
                 {
-                    yield return new WaitTime(50);
+                    holdingShift = false;
+                    Input.KeyUp(System.Windows.Forms.Keys.ShiftKey);
+                    yield return Cursor.ReleaseItemOnCursor();
                     // Didn't work or was the same, try again
                     continue;
                 }
@@ -347,14 +353,18 @@ public class AutoSextant : BaseSettingsPlugin<AutoSextantSettings>
                 {
                     break;
                 }
-                yield return Input.ClickElement(nextCompass.Position, System.Windows.Forms.MouseButtons.Right);
-                yield return Input.ClickElement(stone.Position);
+                while (Cursor.ItemName == null || Cursor.ItemName != "Charged Compass")
+                {
+                    yield return Input.UseItem(nextCompass.Position);
+                    yield return Input.ClickElement(stone.Position);
+                    yield return new WaitFunctionTimed(() => Cursor.ItemName != null && Cursor.ItemName == "Charged Compass", false, 50);
+                }
                 SessionWindow.AddMod(compassPrice.Name);
                 var count = NInventory.Inventory.InventoryCount;
-                while (NInventory.Inventory.InventoryCount == count)
+                while (NInventory.Inventory.InventoryCount == count || (Cursor.ItemName != null && Cursor.ItemName == "Charged Compass"))
                 {
                     yield return Input.ClickElement(nextFreeSlot.Position);
-                    yield return new WaitTime(10);
+                    yield return new WaitFunctionTimed(() => NInventory.Inventory.InventoryCount != count || (Cursor.ItemName != null && Cursor.ItemName == "Charged Compass"), false, 50);
                 }
             }
         }
@@ -728,10 +738,22 @@ public class AutoSextant : BaseSettingsPlugin<AutoSextantSettings>
 
             if (compassPrice != null)
             {
+                string currentName = compassPrice.Name;
+                var index = Settings.ModSettings.FindIndex(x => x.Item1 == currentName);
+                var (_, never, always, cap) = index != -1 ? Settings.ModSettings[index] : (currentName, false, false, 0);
+                var capOk = cap > 0 ? Stock.Get(CompassList.PriceToModName[currentName]) < cap : true;
+
                 var chaosPrice = compassPrice.ChaosPrice;
-                var color = chaosPrice >= Settings.MinChaosValue ? Color.Green : Color.Red;
+                var color = !never && capOk && (chaosPrice >= Settings.MinChaosValue || (always && capOk)) ? Color.Green : Color.Red;
                 Graphics.DrawFrame(rollingStone.Slot.GetClientRect(), color, 100f, 3, 0);
                 var txt = $"{rollingStone.ClearName} - {chaosPrice} Chaos";
+                if (never)
+                    txt += " (Never)";
+                else if (always && capOk)
+                    txt += " (Always)";
+                else if (!capOk)
+                    txt += $" (Cap reached: {cap})";
+
                 var textSize = Graphics.MeasureText(txt, 20);
                 var textPos = new System.Numerics.Vector2
                 {

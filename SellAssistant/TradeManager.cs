@@ -99,19 +99,24 @@ public static class TradeManager
                 TradeQueue.RemoveAt(0);
             }
 
+            if (ActiveTrade != null)
+            {
+                if (chatPointer == null)
+                    chatPointer = Chat.GetPointer();
+                if (Chat.CheckNewMessages(chatPointer, "Trade cancelled", false)) // Always interrupt if cancelled
+                    ActiveTrade.Status = TradeRequestStatus.Cancelled;
+                if (Chat.CheckNewMessages(chatPointer, "Player not found in this area", false))
+                    ActiveTrade.Status = TradeRequestStatus.Cancelled;
+                if (Chat.CheckNewMessages(chatPointer, "Trade accepted"))
+                    ActiveTrade.Status = TradeRequestStatus.Accepted;
+
+                Log.Debug($"Trade status: {ActiveTrade.Status}");
+            }
+
             if (ActiveTrade != null && !coroutineRunning)
             {
                 lock (ActiveTrade)
                 {
-                    if (chatPointer == null)
-                        chatPointer = Chat.GetPointer();
-                    if (Chat.CheckNewMessages(chatPointer, "Trade cancelled", false)) // Always interrupt if cancelled
-                        ActiveTrade.Status = TradeRequestStatus.Cancelled;
-                    if (Chat.CheckNewMessages(chatPointer, "Player not found in this area", false))
-                        ActiveTrade.Status = TradeRequestStatus.Cancelled;
-                    if (Chat.CheckNewMessages(chatPointer, "Trade accepted"))
-                        ActiveTrade.Status = TradeRequestStatus.Accepted;
-
                     switch (ActiveTrade.Status)
                     {
                         case TradeRequestStatus.None:
@@ -137,7 +142,10 @@ public static class TradeManager
                             break;
                         case TradeRequestStatus.ItemsTransferred:
                             if (TradeWindow is { IsVisible: false })
+                            {
+                                Log.Debug("Trade window closed, but still on ItemsTransferred - breaking");
                                 break;
+                            }
                             Log.Debug("All items transferred, begin hovering items");
                             Core.ParallelRunner.Run(new Coroutine(HoverTradeItems(), AutoSextant.Instance, _tradeCoroutineName));
                             break;

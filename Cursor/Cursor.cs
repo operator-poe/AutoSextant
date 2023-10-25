@@ -1,12 +1,11 @@
 using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
+using System.Windows.Forms;
 using ExileCore.PoEMemory;
 using ExileCore.PoEMemory.Components;
 using ExileCore.PoEMemory.MemoryObjects;
+using ExileCore.Shared;
 
-namespace AutoSextant.Cursor;
+namespace AutoSextant;
 
 // If HasItem, but name is null it's a right click which we can't identify
 public static class Cursor
@@ -67,5 +66,56 @@ public static class Cursor
         {
             return Stack?.Size ?? 0;
         }
+    }
+
+    public static System.Collections.IEnumerator ReleaseItemOnCursor(Action callback = null)
+    {
+        yield return Input.Delay();
+        if (!HasItem)
+        {
+            callback?.Invoke();
+            yield break;
+        }
+
+        Log.Debug($"Dumping '{ItemName}' x{StackSize} on cursor");
+        if (ItemName == null)
+        {
+            while (HasItem)
+            {
+                yield return Input.Delay();
+                Input.Click(MouseButtons.Right);
+                yield return Input.Delay();
+            }
+        }
+        else
+        {
+            while (HasItem)
+            {
+                if (ItemName == "Awakened Sextant" || ItemName == "Surveyor's Compass")
+                {
+                    yield return NStash.Stash.SelectTab(AutoSextant.Instance.Settings.RestockSextantFrom.Value);
+                    if (ItemName == "Awakened Sextant")
+                    {
+                        var nextSextant = Stash.NextSextant;
+                        yield return Input.ClickElement(nextSextant.Position);
+                        yield return new WaitTime(30);
+                    }
+                    else if (ItemName == "Surveyor's Compass")
+                    {
+                        var nextSextant = Stash.NextCompass;
+                        yield return Input.ClickElement(nextSextant.Position);
+                        yield return new WaitTime(30);
+                    }
+
+                }
+                else if (ItemName == "Charged Compass")
+                {
+                    var nextFreeSlot = Inventory.NextFreeChargedCompassSlot;
+                    yield return Input.ClickElement(nextFreeSlot.Position);
+                    yield return new WaitTime(30);
+                }
+            }
+        }
+        callback?.Invoke();
     }
 }

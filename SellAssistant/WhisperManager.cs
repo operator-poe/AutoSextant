@@ -206,7 +206,7 @@ public static class WhisperManager
 
     public static void Render()
     {
-        if (ImGui.BeginTable("WhisperLastChatterAddTable", 3, ImGuiTableFlags.Borders | ImGuiTableFlags.NoSavedSettings))
+        if (ImGui.BeginTable("WhisperLastChatterAddTable", 5, ImGuiTableFlags.Borders | ImGuiTableFlags.NoSavedSettings))
         {
             ImGui.TableNextRow();
             for (int i = 0; i < Chat.LastChatUsers.Count; i++)
