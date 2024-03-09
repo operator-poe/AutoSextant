@@ -75,6 +75,17 @@ public class PriceFetcher
           // TODO (supporte elevated sextants)
           .Where(x => x.itemGroup.properties != null && x.itemGroup.properties.Length > 0)
           .Where(x => x.itemGroup.properties[0].value == "4")
+          // special case for ultimatum for now
+          .Select(x =>
+          {
+            if (x.itemGroup.displayName == null && x.itemGroup.key.Contains("ultimatum"))
+            {
+              x.itemGroup.displayName = "Ultimatum";
+            }
+            return x;
+          }
+            )
+            .Where(x => x.itemGroup.displayName != null)
           .GroupBy(x => x.itemGroup.displayName)
           .Select(x => x.First())
           .Select(x =>
@@ -134,7 +145,7 @@ public class PriceFetcher
           search = new Search
           {
             // TODO
-            league = "Ancestor" ?? throw new Exception("Please configure the league"),
+            league = "Affliction" ?? throw new Exception("Please configure the league"),
             offSet = fromOffset,
             searchString = search,
             quantityMin = 25,
