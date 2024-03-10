@@ -8,14 +8,13 @@ using ExileCore.Shared.Enums;
 using System.Linq;
 using ExileCore.PoEMemory.Elements;
 using System;
-using System.Security;
-using System.Threading.Tasks;
 using AutoSextant.PoEStack;
 
 namespace AutoSextant;
 
 public class AutoSextant : BaseSettingsPlugin<AutoSextantSettings>
 {
+    public Scheduler Scheduler = new Scheduler();
     internal static AutoSextant Instance;
 
     public override bool Initialise()
@@ -25,14 +24,14 @@ public class AutoSextant : BaseSettingsPlugin<AutoSextantSettings>
             Instance = this;
         }
 
-        Input.RegisterKey(Settings.RestockHotkey);
-        Settings.RestockHotkey.OnValueChanged += () => { Input.RegisterKey(Settings.RestockHotkey); };
-        Input.RegisterKey(Settings.CleanInventoryHotKey);
-        Settings.CleanInventoryHotKey.OnValueChanged += () => { Input.RegisterKey(Settings.CleanInventoryHotKey); };
-        Input.RegisterKey(Settings.RunHotkey);
-        Settings.RunHotkey.OnValueChanged += () => { Input.RegisterKey(Settings.RunHotkey); };
-        Input.RegisterKey(Settings.CancelHotKey);
-        Settings.RunHotkey.OnValueChanged += () => { Input.RegisterKey(Settings.CancelHotKey); };
+        InputAsync.RegisterKey(Settings.RestockHotkey);
+        Settings.RestockHotkey.OnValueChanged += () => { InputAsync.RegisterKey(Settings.RestockHotkey); };
+        InputAsync.RegisterKey(Settings.CleanInventoryHotKey);
+        Settings.CleanInventoryHotKey.OnValueChanged += () => { InputAsync.RegisterKey(Settings.CleanInventoryHotKey); };
+        InputAsync.RegisterKey(Settings.RunHotkey);
+        Settings.RunHotkey.OnValueChanged += () => { InputAsync.RegisterKey(Settings.RunHotkey); };
+        InputAsync.RegisterKey(Settings.CancelHotKey);
+        Settings.RunHotkey.OnValueChanged += () => { InputAsync.RegisterKey(Settings.CancelHotKey); };
 
         Settings.UpdatePoeStackPrices.OnPressed += async () =>
         {
@@ -75,7 +74,6 @@ public class AutoSextant : BaseSettingsPlugin<AutoSextantSettings>
             CompassList.AwakenedSextantPrice = (float)result.Item2["Awakened Sextant"].Value;
         });
 
-
         return true;
     }
 
@@ -102,35 +100,31 @@ public class AutoSextant : BaseSettingsPlugin<AutoSextantSettings>
             return Core.ParallelRunner.FindByName(_restockCoroutineName) != null ||
                    Core.ParallelRunner.FindByName(_dumpCoroutineName) != null ||
                    Core.ParallelRunner.FindByName(_runCoroutineName) != null ||
-                   SellAssistant.SellAssistant.IsAnyRoutineRunning ||
-                   DumpQueue.Count > 0;
+                   SellAssistant.SellAssistant.IsAnyRoutineRunning;
         }
     }
 
-    public void StopAllRoutines(Action callback = null)
+    public void StopAllRoutines(Action callback = null, bool clear = true)
     {
-        DumpQueue.Clear();
+        Scheduler.Stop();
+        if (clear)
+            Scheduler.Clear();
+        InputAsync.LOCK_CONTROLLER = false;
+        InputAsync.IControllerEnd();
         SellAssistant.SellAssistant.StopAllRoutines();
-        var routine = Core.ParallelRunner.FindByName(_restockCoroutineName);
-        routine?.Done();
-        routine = Core.ParallelRunner.FindByName(_dumpCoroutineName);
-        routine?.Done();
-        routine = Core.ParallelRunner.FindByName(_runCoroutineName);
-        routine?.Done();
-        Input.ReleaseCtrl();
-        Input.ReleaseShift();
-        Input.UnblockMouse();
-        Core.ParallelRunner.Run(new Coroutine(Cursor.ReleaseItemOnCursor(callback), this, _dumpCoroutineName));
+        Scheduler.AddTask(ResetTask(callback), "ResetTask");
+    }
+
+    private static async SyncTask<bool> ResetTask(Action callback = null)
+    {
+        await InputAsync.ReleaseCtrl();
+        await InputAsync.ReleaseShift();
+        await Cursor.ReleaseItemOnCursorAsync(callback);
+        return true;
     }
 
     public override Job Tick()
     {
-        if (DumpQueue.Count > 0 && Core.ParallelRunner.FindByName(_dumpCoroutineName) == null)
-        {
-            var (mod, amount, callback) = DumpQueue[0];
-            DumpQueue.RemoveAt(0);
-            Core.ParallelRunner.Run(new Coroutine(Dump(mod, amount, callback), this, _dumpCoroutineName));
-        }
         if (Settings.EnableSellAssistant && !SellAssistant.SellAssistant.Enabled)
             SellAssistant.SellAssistant.Enable();
         else if (!Settings.EnableSellAssistant && SellAssistant.SellAssistant.Enabled)
@@ -145,80 +139,44 @@ public class AutoSextant : BaseSettingsPlugin<AutoSextantSettings>
         if (Settings.RestockHotkey.PressedOnce())
         {
             Settings.EnableSellAssistant.Value = true;
-            // Core.ParallelRunner.Run(new Coroutine(Test(), this, _restockCoroutineName));
-            // if (Core.ParallelRunner.FindByName(_restockCoroutineName) == null)
-            // {
-            //     Core.ParallelRunner.Run(new Coroutine(Restock(), this, _restockCoroutineName));
-            // }
-            // else
-            // {
-            //     StopAllRoutines();
-            // }
         }
         if (Settings.CleanInventoryHotKey.PressedOnce())
         {
-            TriggerCleanInventory();
+            Scheduler.AddTask(CleanInventory(), "CleanInventory");
         }
         if (Settings.RunHotkey.PressedOnce())
         {
-            if (Core.ParallelRunner.FindByName(_runCoroutineName) == null)
-            {
-                Core.ParallelRunner.Run(new Coroutine(RunFromInventory(), this, _runCoroutineName));
-            }
-            else
-            {
-                StopAllRoutines();
-            }
+            Scheduler.AddTask(RunFromInventory(), "RunFromInventory");
         }
 
         SellAssistant.SellAssistant.Tick();
         return null;
     }
 
-    private IEnumerator Test()
+    public async SyncTask<bool> CleanInventory()
     {
-        if (NStash.Stash.ActiveTab.Name == "Currency")
-        {
-            yield return NStash.Stash.SelectTab("CHARGED1");
-        }
-        else
-        {
-            yield return NStash.Stash.SelectTab("Currency");
-        }
-    }
-
-    public void TriggerCleanInventory()
-    {
-        StopAllRoutines(() =>
-        {
-            Core.ParallelRunner.Run(new Coroutine(CleanInventory(), this, "AutoSextant_CleanInventory"));
-        });
-    }
-
-    public IEnumerator CleanInventory()
-    {
-        yield return EnsureStash();
-        yield return Cursor.ReleaseItemOnCursor();
-        yield return Dump();
-        yield return NStash.Stash.SelectTab(Settings.RestockSextantFrom);
+        await EnsureStash();
+        await Cursor.ReleaseItemOnCursorAsync();
+        await Dump();
+        await NStash.Stash.SelectTab(Settings.RestockSextantFrom);
         var stashableCurrency = NInventory.Inventory.GetByName(Item.ItemNames[ItemType.Sextant], Item.ItemNames[ItemType.Compass]);
-        Input.HoldCtrl();
+        await InputAsync.HoldCtrl();
         foreach (var item in stashableCurrency)
         {
-            yield return Input.ClickElement(item.GetClientRect().Center);
-            yield return new WaitTime(10);
+            await InputAsync.ClickElement(item.GetClientRect().Center);
         }
-        Input.ReleaseCtrl();
-        Stock.RunRefresh();
+        await InputAsync.ReleaseCtrl();
+        await Stock.Refresh();
+        return true;
     }
 
-    public IEnumerator OpenAtlasInInventoryMode()
+    public async SyncTask<bool> OpenAtlasInInventoryMode()
     {
         if (GameController.IngameState.IngameUi.Atlas.IsVisible && GameController.IngameState.IngameUi.InventoryPanel.IsVisible && GameController.IngameState.IngameUi.StashElement.IsVisible)
         {
-            yield break;
+            return true;
         }
-        yield return EnsureEverythingIsClosed();
+        await EnsureEverythingIsClosed();
 
         var itemsOnGround = GameController.IngameState.IngameUi.ItemsOnGroundLabels;
 
@@ -231,13 +189,13 @@ public class AutoSextant : BaseSettingsPlugin<AutoSextantSettings>
             if (!labelOnGround.IsVisible)
             {
                 Log.Error("Stash not visible");
-                yield break;
+                return false;
             }
             // click 150px to the right
-            yield return Input.ClickElement(labelOnGround.Label.GetClientRect().Center + new Vector2(150, 0));
+            await InputAsync.ClickElement(labelOnGround.Label.GetClientRect().Center + new Vector2(350, 0));
         }
 
-        yield return new WaitTime(800);
+        await InputAsync.Wait(800);
 
 
         itemsOnGround = GameController.IngameState.IngameUi.ItemsOnGroundLabels;
@@ -251,43 +209,41 @@ public class AutoSextant : BaseSettingsPlugin<AutoSextantSettings>
             if (!labelOnGround.IsVisible)
             {
                 Log.Error("Stash not visible");
-                yield break;
+                return false;
             }
-            // click 150px to the right
-            yield return Input.ClickElement(labelOnGround.Label.GetClientRect().Center);
+            await InputAsync.ClickElement(labelOnGround.Label.GetClientRect().Center);
         }
 
-        Input.KeyDown(Settings.AtlasHotKey.Value);
-        Input.KeyUp(Settings.AtlasHotKey.Value);
+        await InputAsync.KeyDown(Settings.AtlasHotKey.Value);
+        await InputAsync.KeyUp(Settings.AtlasHotKey.Value);
 
-        yield return new WaitFunctionTimed(() => GameController.IngameState.IngameUi.Atlas.IsVisible, true, 1000, "Atlas not opened");
+        await InputAsync.Wait(() => GameController.IngameState.IngameUi.Atlas.IsVisible, 1000, "Atlas not opened");
+        await InputAsync.Wait(30);
 
-        Input.KeyDown(Settings.InventoryHotKey.Value);
-        Input.KeyUp(Settings.InventoryHotKey.Value);
-
-        yield return new WaitFunctionTimed(() => GameController.IngameState.IngameUi.InventoryPanel != null && GameController.IngameState.IngameUi.InventoryPanel.IsVisible && GameController.IngameState.IngameUi.StashElement.IsVisible, true, 1000, "Inventory not opened");
+        return await InputAsync.Wait(() => GameController.IngameState.IngameUi.InventoryPanel != null && GameController.IngameState.IngameUi.InventoryPanel.IsVisible && GameController.IngameState.IngameUi.StashElement.IsVisible, 1000, "Inventory not opened");
     }
 
-    public IEnumerator RunFromInventory()
+    public async SyncTask<bool> RunFromInventory()
     {
-        yield return Stock.Refresh();
-        yield return OpenAtlasInInventoryMode();
+        InputAsync.LOCK_CONTROLLER = true;
+        await Stock.Refresh();
+        await OpenAtlasInInventoryMode();
 
         if (!Atlas.HasBlockMods)
         {
             LogError("No block mods");
-            yield break;
+            return false;
         }
 
         var stone = new VoidStone(VoidStonePosition.Top);
-        var maxCharged = 12 * 5;
+        var maxCharged = 8 * 5;
 
         var capacity = Stock.Capacity;
         var totalStock = Stock.Count;
         if (totalStock > capacity)
         {
-            TriggerCleanInventory();
-            yield break;
+            // TriggerCleanInventory();
+            return false;
         }
         var maxCompassesThisSession = Math.Min(maxCharged, capacity - totalStock);
 
@@ -295,7 +251,7 @@ public class AutoSextant : BaseSettingsPlugin<AutoSextantSettings>
         // TODO: attempt counter, then if too many, clear cursor and try again
         while (Inventory.TotalChargedCompasses < maxCompassesThisSession)
         {
-            yield return NStash.Stash.SelectTab(Settings.RestockSextantFrom);
+            await NStash.Stash.SelectTab(Settings.RestockSextantFrom);
             var compassPrice = stone.Price;
             var currentName = compassPrice?.Name ?? null;
 
@@ -315,23 +271,23 @@ public class AutoSextant : BaseSettingsPlugin<AutoSextantSettings>
                 var nextSextant = Stash.NextSextant;
                 if (nextSextant == null)
                 {
-                    TriggerCleanInventory();
+                    // TriggerCleanInventory();
                     break;
                 }
                 if (!holdingShift)
                 {
-                    yield return Input.UseItem(nextSextant.Position);
+                    await InputAsync.UseItem(nextSextant.Position);
                     holdingShift = true;
-                    Input.KeyDown(System.Windows.Forms.Keys.ShiftKey);
+                    await InputAsync.KeyDown(System.Windows.Forms.Keys.ShiftKey);
                 }
-                yield return Input.ClickElement(stone.Position);
+                await InputAsync.ClickElement(stone.Position);
                 SessionWindow.IncreaseSextantCount();
-                yield return new WaitFunctionTimed(() => stone.Price != null && stone.Price.Name != currentName, false, 50);
+                await InputAsync.Wait(() => stone.Price != null && stone.Price.Name != currentName, 100);
                 if (stone.Price == null || stone.Price.Name == currentName)
                 {
                     holdingShift = false;
-                    Input.KeyUp(System.Windows.Forms.Keys.ShiftKey);
-                    yield return Cursor.ReleaseItemOnCursor();
+                    await InputAsync.KeyUp(System.Windows.Forms.Keys.ShiftKey);
+                    await Cursor.ReleaseItemOnCursorAsync();
                     // Didn't work or was the same, try again
                     continue;
                 }
@@ -346,7 +302,7 @@ public class AutoSextant : BaseSettingsPlugin<AutoSextantSettings>
             if ((!never && stone.Price != null && compassPrice.ChaosPrice >= Settings.MinChaosValue && capOk) || (always && capOk))
             {
                 holdingShift = false;
-                Input.KeyUp(System.Windows.Forms.Keys.ShiftKey);
+                await InputAsync.KeyUp(System.Windows.Forms.Keys.ShiftKey);
                 var nextCompass = Stash.NextCompass;
                 var nextFreeSlot = Inventory.NextFreeChargedCompassSlot;
                 if (nextCompass == null || nextFreeSlot == null)
@@ -355,156 +311,36 @@ public class AutoSextant : BaseSettingsPlugin<AutoSextantSettings>
                 }
                 while (Cursor.ItemName == null || Cursor.ItemName != "Charged Compass")
                 {
-                    yield return Input.UseItem(nextCompass.Position);
-                    yield return Input.ClickElement(stone.Position);
-                    yield return new WaitFunctionTimed(() => Cursor.ItemName != null && Cursor.ItemName == "Charged Compass", false, 50);
+                    await InputAsync.UseItem(nextCompass.Position);
+                    await InputAsync.ClickElement(stone.Position);
+                    await InputAsync.Wait(() => Cursor.ItemName != null && Cursor.ItemName == "Charged Compass", 100);
                 }
                 SessionWindow.AddMod(compassPrice.Name);
                 var count = NInventory.Inventory.InventoryCount;
                 while (NInventory.Inventory.InventoryCount == count || (Cursor.ItemName != null && Cursor.ItemName == "Charged Compass"))
                 {
-                    yield return Input.ClickElement(nextFreeSlot.Position);
-                    yield return new WaitFunctionTimed(() => NInventory.Inventory.InventoryCount != count || (Cursor.ItemName != null && Cursor.ItemName == "Charged Compass"), false, 50);
+                    await InputAsync.ClickElement(nextFreeSlot.Position);
+                    await InputAsync.Wait(() => NInventory.Inventory.InventoryCount != count || (Cursor.ItemName != null && Cursor.ItemName == "Charged Compass"), 100);
                 }
             }
+            await InputAsync.Wait();
+            await InputAsync.Wait();
         }
         holdingShift = false;
-        Input.KeyUp(System.Windows.Forms.Keys.ShiftKey);
+        await InputAsync.KeyUp(System.Windows.Forms.Keys.ShiftKey);
 
-        yield return Dump();
+        await Dump();
 
-        yield return RunFromInventory();
+        await RunFromInventory();
+
+        InputAsync.LOCK_CONTROLLER = false;
+        InputAsync.IControllerEnd();
+        return true;
     }
 
-    public IEnumerator Run()
+    public async SyncTask<bool> Dump(string specificMod = null, int? specifiedAmount = null, Action<int> callback = null)
     {
-        yield return Stock.Refresh();
-        yield return EnsureAtlas();
-
-        if (!Atlas.HasBlockMods)
-        {
-            LogError("No block mods");
-            yield break;
-        }
-
-        var stone = new VoidStone(VoidStonePosition.Top);
-        var maxCharged = 7 * 5;
-
-        var holdingShift = false;
-        while (Inventory.TotalChargedCompasses < maxCharged)
-        {
-            var compassPrice = stone.Price;
-            var currentName = compassPrice?.Name ?? null;
-
-            bool capOk = true;
-            int index, cap;
-            string _;
-            bool never, always;
-            if (currentName != null)
-            {
-                index = Settings.ModSettings.FindIndex(x => x.Item1 == currentName);
-                (_, never, always, cap) = index != -1 ? Settings.ModSettings[index] : (currentName, false, false, 0);
-                capOk = cap > 0 ? Stock.Get(CompassList.PriceToModName[currentName]) < cap : true;
-            }
-
-            if (compassPrice == null || compassPrice.ChaosPrice < Settings.MinChaosValue || !capOk)
-            {
-                var nextSextant = Inventory.NextSextant;
-                if (nextSextant == null)
-                {
-                    break;
-                }
-                if (!holdingShift)
-                {
-                    holdingShift = true;
-                    Input.KeyDown(System.Windows.Forms.Keys.ShiftKey);
-                    yield return Input.ClickElement(nextSextant.Position, System.Windows.Forms.MouseButtons.Right);
-                }
-                yield return Input.ClickElement(stone.Position);
-                SessionWindow.IncreaseSextantCount();
-                yield return new WaitFunctionTimed(() => stone.Price != null && stone.Price.Name != currentName, false, 50);
-                if (stone.Price == null || stone.Price.Name == currentName)
-                {
-                    yield return new WaitTime(50);
-                    // Didn't work or was the same, try again
-                    continue;
-                }
-            }
-
-            compassPrice = stone.Price;
-
-            index = Settings.ModSettings.FindIndex(x => x.Item1 == compassPrice.Name);
-            (_, never, always, cap) = index != -1 ? Settings.ModSettings[index] : (compassPrice.Name, false, false, 0);
-
-            capOk = cap > 0 ? Stock.Get(CompassList.PriceToModName[compassPrice.Name]) < cap : true;
-            if ((!never && stone.Price != null && compassPrice.ChaosPrice >= Settings.MinChaosValue && capOk) || (always && capOk))
-            {
-                holdingShift = false;
-                Input.KeyUp(System.Windows.Forms.Keys.ShiftKey);
-                var nextCompass = Inventory.NextCompass;
-                var nextFreeSlot = Inventory.NextFreeChargedCompassSlot;
-                if (nextCompass == null || nextFreeSlot == null)
-                {
-                    break;
-                }
-                yield return Input.ClickElement(nextCompass.Position, System.Windows.Forms.MouseButtons.Right);
-                yield return Input.ClickElement(stone.Position);
-                SessionWindow.AddMod(compassPrice.Name);
-                yield return Input.ClickElement(nextFreeSlot.Position);
-            }
-        }
-        holdingShift = false;
-        Input.KeyUp(System.Windows.Forms.Keys.ShiftKey);
-
-        yield return Dump();
-        yield return Restock();
-
-        yield return Run();
-    }
-
-    public IEnumerator Restock()
-    {
-        yield return EnsureStash();
-
-        var tab1 = Stash.GetStashTabIndexForName(Settings.RestockSextantFrom.Value);
-        yield return NStash.Stash.SelectTab(tab1);
-
-        yield return RestockColumn(0, ItemType.Compass, true);
-        yield return RestockColumn(1, ItemType.Sextant, true);
-        yield return RestockColumn(2, ItemType.Sextant);
-        yield return RestockColumn(3, ItemType.Sextant);
-        yield return RestockColumn(4, ItemType.Sextant);
-    }
-
-    public IEnumerator EnsureAtlas()
-    {
-        if (GameController.IngameState.IngameUi.Atlas.IsVisible && !GameController.IngameState.IngameUi.InventoryPanel.IsVisible)
-        {
-            yield break;
-        }
-        yield return EnsureEverythingIsClosed();
-
-        Input.KeyDown(Settings.AtlasHotKey.Value);
-        Input.KeyUp(Settings.AtlasHotKey.Value);
-
-        yield return new WaitFunctionTimed(() => GameController.IngameState.IngameUi.Atlas.IsVisible, true, 1000, "Atlas not opened");
-
-        Input.KeyDown(Settings.InventoryHotKey.Value);
-        Input.KeyUp(Settings.InventoryHotKey.Value);
-
-        yield return new WaitFunctionTimed(() => GameController.IngameState.IngameUi.InventoryPanel != null && GameController.IngameState.IngameUi.InventoryPanel.IsVisible, true, 1000, "Inventory not opened");
-    }
-
-    private static List<(string, int, Action<int>)> DumpQueue = new List<(string, int, Action<int>)>();
-
-    public void TriggerDump(string specificMod = null, int? specifiedAmount = null, Action<int> callback = null)
-    {
-        DumpQueue.Add((specificMod, specifiedAmount ?? 60, callback));
-    }
-
-    public IEnumerator Dump(string specificMod = null, int? specifiedAmount = null, Action<int> callback = null)
-    {
-        yield return EnsureStash();
+        await EnsureStash();
 
         var dumpTabs = Settings.DumpTabs.Value.Split(',');
 
@@ -518,9 +354,10 @@ public class AutoSextant : BaseSettingsPlugin<AutoSextantSettings>
                     continue;
 
                 var items = specificMod == null ? Inventory.ChargedCompasses : NInventory.Inventory.GetByModName(specificMod).Select(x => new Item(x)).ToArray();
+                items = items.OrderBy(x => x.Position.X).ThenBy(x => x.Position.Y).ToArray();
                 var tab = Stash.GetStashTabIndexForName(tabName);
-                yield return NStash.Stash.SelectTab(tab);
-                yield return new WaitTime(30);
+                await NStash.Stash.SelectTab(tab);
+                await InputAsync.Wait(30);
                 var stashTabType = GameController.IngameState.IngameUi.StashElement.VisibleStash.InvType;
                 var max = stashTabType == InventoryType.QuadStash ? 576 : 144;
                 var count = GameController.IngameState.IngameUi.StashElement.VisibleStash.ItemCount;
@@ -530,165 +367,90 @@ public class AutoSextant : BaseSettingsPlugin<AutoSextantSettings>
                 }
                 var freeSlots = max - count;
                 var toDump = Math.Min(Math.Min(freeSlots, items.Count()), leftToDump);
-                Input.KeyDown(System.Windows.Forms.Keys.ControlKey);
+                await InputAsync.KeyDown(System.Windows.Forms.Keys.ControlKey);
                 for (int i = 0; i < toDump; i++)
                 {
-                    yield return Input.ClickElement(items[i].Position, 10);
+                    await InputAsync.ClickElement(items[i].Position);
                 }
                 leftToDump -= toDump;
                 dumped += toDump;
-                Input.KeyUp(System.Windows.Forms.Keys.ControlKey);
-                yield return new WaitTime(30);
+                await InputAsync.KeyUp(System.Windows.Forms.Keys.ControlKey);
+                await InputAsync.Wait(30);
                 if (toDump == items.Count() || leftToDump <= 0)
                 {
                     callback?.Invoke((int)dumped);
-                    yield break;
+                    return true;
                 }
             }
         }
         callback?.Invoke((int)dumped);
+        return true;
     }
 
-    public IEnumerator EnsureStash()
+    public async SyncTask<bool> EnsureStash()
     {
         if (GameController.IngameState.IngameUi.StashElement.IsVisible && GameController.IngameState.IngameUi.InventoryPanel.IsVisible)
         {
-            yield break;
+            return true;
         }
-        yield return EnsureEverythingIsClosed();
+        await EnsureEverythingIsClosed();
 
         var itemsOnGround = GameController.IngameState.IngameUi.ItemsOnGroundLabels;
         var stash = GameController.IngameState.IngameUi.StashElement;
 
         if (stash is { IsVisible: true })
         {
-            yield break;
+            return true;
         }
 
         foreach (LabelOnGround labelOnGround in itemsOnGround)
         {
-            if (!labelOnGround.ItemOnGround.Path.Contains("/Stash"))
+            if (!(labelOnGround?.ItemOnGround?.Path?.Contains("/Stash") ?? true))
             {
                 continue;
             }
             if (!labelOnGround.IsVisible)
             {
                 Log.Error("Stash not visible");
-                yield break;
+                return false;
             }
-            yield return Input.ClickElement(labelOnGround.Label.GetClientRect().Center);
-            yield return new WaitFunctionTimed(() => stash is { IsVisible: true }, true, 2000, "Stash not reached in time");
+            await InputAsync.ClickElement(labelOnGround.Label.GetClientRect().Center);
+            await InputAsync.Wait(() => stash is { IsVisible: true }, 2000, "Stash not reached in time");
             if (stash is { IsVisible: false })
             {
                 Log.Error("Stash not visible");
-                yield break;
+                return false;
             }
         }
-        yield return true;
+        return true;
     }
 
-    private IEnumerator EnsureEverythingIsClosed()
+    private async SyncTask<bool> EnsureEverythingIsClosed()
     {
         if (GameController.IngameState.IngameUi.Atlas.IsVisible)
         {
-            Input.KeyDown(Settings.AtlasHotKey.Value);
-            Input.KeyUp(Settings.AtlasHotKey.Value);
-            yield return new WaitFunctionTimed(() => !GameController.IngameState.IngameUi.Atlas.IsVisible, true, 1000, "Atlas not closed");
+            await InputAsync.KeyDown(Settings.AtlasHotKey.Value);
+            await InputAsync.KeyUp(Settings.AtlasHotKey.Value);
+            await InputAsync.Wait(() => GameController.IngameState.IngameUi.Atlas.IsVisible, 1000, "Atlas not closed");
         }
         if (GameController.IngameState.IngameUi.InventoryPanel != null && GameController.IngameState.IngameUi.InventoryPanel.IsVisible)
         {
-            Input.KeyDown(Settings.InventoryHotKey.Value);
-            Input.KeyUp(Settings.InventoryHotKey.Value);
-            yield return new WaitFunctionTimed(() => !GameController.IngameState.IngameUi.InventoryPanel.IsVisible, true, 1000, "Inventory not closed");
+            await InputAsync.KeyDown(Settings.InventoryHotKey.Value);
+            await InputAsync.KeyUp(Settings.InventoryHotKey.Value);
+            await InputAsync.Wait(() => !GameController.IngameState.IngameUi.InventoryPanel.IsVisible, 1000, "Inventory not closed");
         }
         if (GameController.IngameState.IngameUi.StashElement != null && GameController.IngameState.IngameUi.StashElement.IsVisible)
         {
-            Input.KeyDown(System.Windows.Forms.Keys.Escape);
-            Input.KeyUp(System.Windows.Forms.Keys.Escape);
-            yield return new WaitFunctionTimed(() => !GameController.IngameState.IngameUi.StashElement.IsVisible, true, 1000, "Inventory not closed");
+            await InputAsync.KeyDown(System.Windows.Forms.Keys.Escape);
+            await InputAsync.KeyUp(System.Windows.Forms.Keys.Escape);
+            await InputAsync.Wait(() => !GameController.IngameState.IngameUi.StashElement.IsVisible, 1000, "Inventory not closed");
         }
-    }
-
-    private IEnumerator RestockColumn(int col, ItemType type, bool firstColumn = false)
-    {
-        var compassItem = Stash.GetFirstItemTypeFromStash(Item.ItemNames[type]);
-        if (compassItem == null)
-        {
-            // Only stop the entire process on entry of this function as we can still work with a partial restock
-            if (firstColumn)
-                TriggerCleanInventory();
-            yield break;
-        }
-        var itemWidth = compassItem.GetClientRect().Width / 56 * 70;
-        var inventoryPanel = Instance.GameController.Game.IngameState.IngameUi.InventoryPanel[InventoryIndex.PlayerInventory];
-        Vector2 inventoryPanelPosition = inventoryPanel.InventoryUIElement.GetClientRect().TopLeft;
-
-        while (Inventory.CountItemsInColumn(col) + 10 <= 50)
-        {
-            var item = Stash.GetFirstItemTypeFromStash(Item.ItemNames[type]);
-            if (compassItem == null)
-                yield break;
-            var itemStack = new Item(item);
-            yield return itemStack.GetStack(true);
-            yield return new WaitTime(1);
-        }
-
-
-        var column = Inventory.GetColumn(col);
-        for (int i = 0; i < column.Count(); i++)
-        {
-            var slot = column[i];
-            var item = Stash.GetFirstItemTypeFromStash(Item.ItemNames[type]);
-            if (compassItem == null)
-                yield break;
-            var compassesStack = item.Item.GetComponent<ExileCore.PoEMemory.Components.Stack>();
-            var compassStackSize = compassesStack?.Size ?? 0;
-
-            if (compassStackSize <= 0)
-            {
-                break;
-            }
-
-            Vector2 position;
-            int sizeNeeded;
-            if (slot == null)
-            {
-                sizeNeeded = 10;
-                position = new Vector2(
-                    inventoryPanelPosition.X + itemWidth / 2 + itemWidth * col,
-                    inventoryPanelPosition.Y + itemWidth / 2 + itemWidth * i
-                );
-            }
-            else
-            {
-                var slotStack = slot.Item.GetComponent<ExileCore.PoEMemory.Components.Stack>();
-                var slotStackSize = slotStack?.Size ?? 0;
-                sizeNeeded = 10 - slotStackSize;
-                position = slot.GetClientRect().Center;
-            }
-
-            if (compassStackSize > sizeNeeded && sizeNeeded > 0)
-            {
-                var itemStack = new Item(item);
-                if (sizeNeeded < 10)
-                {
-                    yield return itemStack.GetFraction(sizeNeeded);
-                }
-                else
-                {
-                    yield return itemStack.GetStack();
-                }
-                yield return Input.ClickElement(position);
-            }
-        }
+        return true;
     }
 
     public override void Render()
     {
-        if (IsAnyRoutineRunning)
-        {
-            Graphics.DrawText("AutoSextant is busy", new System.Numerics.Vector2(100, 100), Color.Red, 20);
-        }
+        Scheduler.Run();
         SessionWindow.Render();
         Error.Render();
         SellAssistant.SellAssistant.Render();

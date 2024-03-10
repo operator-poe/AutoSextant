@@ -131,6 +131,7 @@ public class AutoSextantSettings : ISettings
     public CustomNode ModSettingsNode { get; set; }
     [Menu("Extra Delay", "Delay to wait after each inventory clearing attempt(in ms).")]
     public RangeNode<int> ExtraDelay { get; set; }
+    public ToggleNode EnableInputHumanizerLibSupport { get; set; } = new ToggleNode(true);
 
     public ToggleNode EnableSellAssistant { get; set; } = new ToggleNode(false);
     public ToggleNode EnableSessionWindow { get; set; } = new ToggleNode(true);

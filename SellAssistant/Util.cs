@@ -121,7 +121,7 @@ public static class Util
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     public static extern bool SetForegroundWindow(IntPtr hWnd);
-    public static IEnumerator ForceFocus()
+    public static async SyncTask<bool> ForceFocusAsync()
     {
         if (!AutoSextant.Instance.GameController.Window.IsForeground())
         {
@@ -131,7 +131,7 @@ public static class Util
                 SetForegroundWindow(handle);
             }
         }
-        yield return new WaitFunctionTimed(AutoSextant.Instance.GameController.Window.IsForeground, true, 1000, "Window could not be focused");
+        return await InputAsync.Wait(() => AutoSextant.Instance.GameController.Window.IsForeground(), 1000, "Window could not be focused");
     }
 
     public static string GetClipboardText()

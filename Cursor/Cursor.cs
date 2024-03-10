@@ -68,13 +68,14 @@ public static class Cursor
         }
     }
 
-    public static System.Collections.IEnumerator ReleaseItemOnCursor(Action callback = null)
+    public static async SyncTask<bool> ReleaseItemOnCursorAsync(Action callback = null)
     {
-        yield return Input.Delay();
+
+        await InputAsync.Wait(30);
         if (!HasItem)
         {
             callback?.Invoke();
-            yield break;
+            return true;
         }
 
         Log.Debug($"Dumping '{ItemName}' x{StackSize} on cursor");
@@ -82,9 +83,9 @@ public static class Cursor
         {
             while (HasItem)
             {
-                yield return Input.Delay();
-                Input.Click(MouseButtons.Right);
-                yield return Input.Delay();
+                await InputAsync.Wait(30);
+                await InputAsync.Click(MouseButtons.Right);
+                await InputAsync.Wait(30);
             }
         }
         else
@@ -93,29 +94,31 @@ public static class Cursor
             {
                 if (ItemName == "Awakened Sextant" || ItemName == "Surveyor's Compass")
                 {
-                    yield return NStash.Stash.SelectTab(AutoSextant.Instance.Settings.RestockSextantFrom.Value);
+                    // yield return NStash.Stash.SelectTab(AutoSextant.Instance.Settings.RestockSextantFrom.Value);
                     if (ItemName == "Awakened Sextant")
                     {
                         var nextSextant = Stash.NextSextant;
-                        yield return Input.ClickElement(nextSextant.Position);
-                        yield return new WaitTime(30);
+                        await InputAsync.ClickElement(nextSextant.Position, MouseButtons.Left);
+                        await InputAsync.Wait(30);
                     }
                     else if (ItemName == "Surveyor's Compass")
                     {
                         var nextSextant = Stash.NextCompass;
-                        yield return Input.ClickElement(nextSextant.Position);
-                        yield return new WaitTime(30);
+                        await InputAsync.ClickElement(nextSextant.Position, MouseButtons.Left);
+                        await InputAsync.Wait(30);
                     }
 
                 }
                 else if (ItemName == "Charged Compass")
                 {
                     var nextFreeSlot = Inventory.NextFreeChargedCompassSlot;
-                    yield return Input.ClickElement(nextFreeSlot.Position);
-                    yield return new WaitTime(30);
+
+                    await InputAsync.ClickElement(nextFreeSlot.Position, MouseButtons.Left);
+                    await InputAsync.Wait(30);
                 }
             }
         }
         callback?.Invoke();
+        return true;
     }
 }

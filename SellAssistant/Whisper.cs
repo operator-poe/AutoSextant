@@ -167,7 +167,7 @@ public class Whisper
 
         string username = null;
         string pattern = "@From (<.*> )?(.*):";
-        Match match = Regex.Match(whisper, pattern, RegexOptions.IgnoreCase);
+        Match match = Regex.Match(whisper.Split(":")[0] + ":", pattern, RegexOptions.IgnoreCase);
         if (match.Success)
         {
             username = match.Groups[2].Value;
@@ -302,7 +302,8 @@ public class Whisper
     {
         foreach (var (mod, quantity) in InInventory)
         {
-            AutoSextant.Instance.TriggerDump(mod, quantity, (int dumped) =>
+            AutoSextant.Instance.Scheduler.AddTask(
+            AutoSextant.Instance.Dump(mod, quantity, (int dumped) =>
             {
                 Log.Debug($"Dumped {dumped} {mod}");
                 foreach (var item in Items.Where(x => x.ModName == mod))
@@ -311,7 +312,7 @@ public class Whisper
                 }
                 InInventory.Remove(mod);
                 Stock.RunRefresh();
-            });
+            }), "Whisper.ReturnItems");
         }
     }
 
@@ -353,7 +354,7 @@ public class Whisper
                 ButtonSelection = ButtonSelection.None;
             }
             ));
-            if (Items.Any(x => x.Status == FullfillmentStatus.NotEnough || x.Status == FullfillmentStatus.NotAvailable) && !Items.All(x => x.Status == FullfillmentStatus.NotEnough))
+            if (Items.Any(x => x.Status == FullfillmentStatus.NotEnough || x.Status == FullfillmentStatus.NotAvailable) && !Items.All(x => x.Status == FullfillmentStatus.NotAvailable))
             {
                 buttons.Add((Keys.NumPad2, $"Partial", () =>
                 {

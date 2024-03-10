@@ -38,6 +38,7 @@ public class TradeRequest
 
 public static class TradeManager
 {
+    private static AutoSextant Instance = AutoSextant.Instance;
     private static TradeWindow TradeWindow
     {
         get
@@ -67,7 +68,7 @@ public static class TradeManager
                 Core.ParallelRunner.FindByName(_tradeCoroutineName) != null;
         }
     }
-    public static void StopAllRoutines(bool clearQueue = true)
+    public static async void StopAllRoutines(bool clearQueue = true)
     {
         if (clearQueue)
             lock (TradeQueue)
@@ -85,7 +86,7 @@ public static class TradeManager
             lock (chatPointer)
                 chatPointer = null;
         Core.ParallelRunner.FindByName(_tradeCoroutineName)?.Done();
-        Input.ReleaseCtrl();
+        await InputAsync.ReleaseCtrl();
     }
 
     public static void Tick()
@@ -122,7 +123,7 @@ public static class TradeManager
                         case TradeRequestStatus.None:
                             Log.Debug($"Sending trade request to {ActiveTrade.PlayerName}");
                             if (ActiveTrade.ExpectedValue > 0 && ActiveTrade.WithChange)
-                                Core.ParallelRunner.Run(new Coroutine(GetChange(), AutoSextant.Instance, _tradeCoroutineName));
+                                Instance.Scheduler.AddTask(GetChange(), "TradeManager.GetChange");
                             else
                                 SendTradeRequest();
                             break;
@@ -138,7 +139,7 @@ public static class TradeManager
                             }
                             break;
                         case TradeRequestStatus.RequestAccepted:
-                            Core.ParallelRunner.Run(new Coroutine(TransferItems(), AutoSextant.Instance, _tradeCoroutineName));
+                            Instance.Scheduler.AddTask(TransferItems(), "TradeManager.TransferItems");
                             break;
                         case TradeRequestStatus.ItemsTransferred:
                             if (TradeWindow is { IsVisible: false })
@@ -147,14 +148,14 @@ public static class TradeManager
                                 break;
                             }
                             Log.Debug("All items transferred, begin hovering items");
-                            Core.ParallelRunner.Run(new Coroutine(HoverTradeItems(), AutoSextant.Instance, _tradeCoroutineName));
+                            Instance.Scheduler.AddTask(HoverTradeItems(), "TradeManager.HoverTradeItems");
                             break;
                         case TradeRequestStatus.ValuesHovered:
                             break;
                         case TradeRequestStatus.Accepted:
                             Log.Debug($"Detected that trade with {ActiveTrade.PlayerName} has been accepted, stashing currency");
                             ActiveTrade.Callback?.Invoke(ActiveTrade);
-                            Core.ParallelRunner.Run(new Coroutine(StashCurrency(), AutoSextant.Instance, _tradeCoroutineName));
+                            Instance.Scheduler.AddTask(StashCurrency(), "TradeManager.StashCurrency");
                             break;
                         case TradeRequestStatus.Cancelled:
                         case TradeRequestStatus.Done:
@@ -181,14 +182,18 @@ public static class TradeManager
             var chaosValue = Util.FormatChaosPrice(TotalChaosValue, DivinePrice);
             var expectedValue = Util.FormatChaosPrice(ActiveTrade.ExpectedValue + ChangeAmount, DivinePrice);
             var color = TotalChaosValue >= (ActiveTrade.ExpectedValue + ChangeAmount) * 0.99 ? Color.Green : Color.Red;
+#pragma warning disable CS0612 // Type or member is obsolete
             AutoSextant.Instance.Graphics.DrawText($"Total Value: {chaosValue} / {expectedValue}", rect.TopLeft + new Vector2(0, 20), color, 20);
+#pragma warning restore CS0612 // Type or member is obsolete
         }
 
         // add another row and say if we're waiting for more items
         var needToHover = ItemsLeftToHover;
         var text = needToHover ? "Waiting for more items" : "Ready to accept";
         var textColor = needToHover ? Color.Red : Color.Green;
+#pragma warning disable CS0612 // Type or member is obsolete
         AutoSextant.Instance.Graphics.DrawText(text, rect.TopLeft + new Vector2(0, 40), textColor, 20);
+#pragma warning restore CS0612 // Type or member is obsolete
     }
 
     private static IList<InventSlotItem> Compasses
@@ -290,11 +295,11 @@ public static class TradeManager
         }
     }
 
-    public static IEnumerator GetChange()
+    public static async SyncTask<bool> GetChange()
     {
-        yield return Util.ForceFocus();
-        yield return AutoSextant.Instance.EnsureStash();
-        yield return NStash.Stash.SelectTab(AutoSextant.Instance.Settings.RestockSextantFrom.Value);
+        await Util.ForceFocusAsync();
+        await AutoSextant.Instance.EnsureStash();
+        await NStash.Stash.SelectTab(AutoSextant.Instance.Settings.RestockSextantFrom.Value);
         var chaosOrbs = Stash.GetFirstItemTypeFromStash("Chaos Orb");
         var chaosStack = new Item(chaosOrbs);
         var change = (int)ChangeAmount;
@@ -305,38 +310,39 @@ public static class TradeManager
             if (chaosLeft < 20)
             {
                 var position = NInventory.Inventory.NextFreeInventoryPositinon.Position;
-                yield return chaosStack.GetFraction(chaosLeft);
-                yield return Input.ClickElement(position);
+                await chaosStack.GetFraction(chaosLeft);
+                await InputAsync.ClickElement(position);
             }
             else
             {
-                yield return chaosStack.GetStack(true);
+                await chaosStack.GetStack(true);
             }
-            yield return new WaitTime(30);
+            await InputAsync.Wait();
         }
 
         lock (ActiveTrade)
             ActiveTrade.Status = TradeRequestStatus.GotChange;
-        yield break;
+        return true;
     }
 
-    public static IEnumerator StashCurrency()
+    public static async SyncTask<bool> StashCurrency()
     {
-        yield return AutoSextant.Instance.EnsureStash();
+        await AutoSextant.Instance.EnsureStash();
         var stashableCurrency = NInventory.Inventory.GetByName("Chaos Orb", "Divine Orb");
-        Input.HoldCtrl();
+        await InputAsync.HoldCtrl();
         foreach (var item in stashableCurrency)
         {
-            yield return Input.ClickElement(item.GetClientRect().Center);
-            yield return new WaitTime(10);
+            await InputAsync.ClickElement(item.GetClientRect().Center);
+            await InputAsync.Wait();
         }
-        Input.ReleaseCtrl();
+        await InputAsync.ReleaseCtrl();
 
         lock (ActiveTrade)
             ActiveTrade.Status = TradeRequestStatus.Done;
+        return true;
     }
 
-    public static IEnumerator HoverTradeItems()
+    public static async SyncTask<bool> HoverTradeItems()
     {
         bool valueMode = false;
         float divinePrice = 0;
@@ -352,7 +358,7 @@ public static class TradeManager
         while (TradeWindow is { IsVisible: true })
         {
             Log.Debug("In outer loop");
-            yield return new WaitTime(50);
+            await InputAsync.Wait();
             if (ActiveTrade.ExpectedValue > 0)
             {
                 HashSet<int> itemsHovered = new HashSet<int>();
@@ -371,20 +377,20 @@ public static class TradeManager
                     {
                         if (!itemsHovered.Contains(i))
                         {
-                            yield return new WaitTime(10);
-                            Input.SetCursorPos(OfferedItems[i].GetClientRect().Center);
-                            yield return new WaitTime(10);
+                            await InputAsync.Wait();
+                            await InputAsync.MoveMouseToElement(OfferedItems[i].GetClientRect().Center);
+                            await InputAsync.Wait();
                             // Width is only intialized after the item is hovered
-                            yield return new WaitFunctionTimed(() => OfferedItems[i].Tooltip.Width > 0, false, 100);
+                            await InputAsync.Wait(() => OfferedItems[i].Tooltip.Width > 0, 100);
                             itemsHovered.Add(i);
                         }
                     }
                     ActiveTrade.ReceivedValue = TotalChaosValue;
-                    yield return new WaitTime(500);
+                    await InputAsync.Wait(500);
                 }
                 if (ItemsLeftToHover)
                     continue;
-                yield return new WaitTime(50);
+                await InputAsync.Wait();
             }
             else
             {
@@ -399,10 +405,11 @@ public static class TradeManager
             {
                 Log.Debug("Accept trade");
                 ActiveTrade.ReceivedValue = TotalChaosValue;
-                yield return Input.ClickElement(TradeWindow.AcceptButton.GetClientRect().Center);
+                await InputAsync.ClickElement(TradeWindow.AcceptButton.GetClientRect().Center);
             }
-            yield return new WaitTime(200);
+            await InputAsync.Wait(200);
         }
+        return true;
     }
 
     public static IList<NormalInventoryItem> YourOffer
@@ -414,13 +421,13 @@ public static class TradeManager
         }
     }
 
-    public static IEnumerator TransferItems()
+    public static async SyncTask<bool> TransferItems()
     {
-        yield return Util.ForceFocus();
+        await Util.ForceFocusAsync();
         int startingItems = CompassCount;
         Log.Debug($"Transferring {startingItems} compasses to {ActiveTrade.PlayerName}");
 
-        Input.HoldCtrl();
+        await InputAsync.HoldCtrl();
         var attempts = 0;
         while (YourOffer.Count() < startingItems)
         {
@@ -429,17 +436,17 @@ public static class TradeManager
             if (attempts > 3)
             {
                 Log.Error("Failed to transfer compasses");
-                yield break;
+                return false;
             }
             foreach (var item in Compasses)
             {
                 var oldCount = YourOffer.Count();
 
-                yield return Input.ClickElement(item.GetClientRect().Center);
+                await InputAsync.ClickElement(item.GetClientRect().Center);
 
-                yield return new WaitFunctionTimed(() => YourOffer.Count() > oldCount, false, 50, "Compass not transferred");
+                await InputAsync.Wait(() => YourOffer.Count() > oldCount, 50, "Compass not transferred");
             }
-            yield return new WaitTime(30);
+            await InputAsync.Wait();
         }
         if (startingItems == 1) // Since youroffer label "place items" is counted as an item run this manually
         {
@@ -447,14 +454,16 @@ public static class TradeManager
             {
                 var oldCount = YourOffer.Count();
 
-                yield return Input.ClickElement(item.GetClientRect().Center);
+                await InputAsync.ClickElement(item.GetClientRect().Center);
 
-                yield return new WaitFunctionTimed(() => YourOffer.Count() > oldCount, false, 50, "Compass not transferred");
+                await InputAsync.Wait(() => YourOffer.Count() > oldCount, 50, "Compass not transferred");
             }
         }
-        Input.ReleaseCtrl();
+        await InputAsync.ReleaseCtrl();
 
         ActiveTrade.Status = TradeRequestStatus.ItemsTransferred;
+
+        return true;
     }
 
     public static void SendTradeRequest()

@@ -1,11 +1,8 @@
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.Data;
 using System.Linq;
-using System.Security;
 using System.Text.RegularExpressions;
-using System.Threading.Tasks;
 using System.Windows.Forms;
 using ExileCore;
 using ExileCore.PoEMemory.Elements;
@@ -20,6 +17,7 @@ public class ChatPointer
 }
 public static class Chat
 {
+    public static AutoSextant Instance = AutoSextant.Instance;
     public static Dictionary<string, ChatPointer> _pointers = new Dictionary<string, ChatPointer>();
     public static List<string> LastChatUsers = new List<string>();
 
@@ -164,17 +162,17 @@ public static class Chat
         return messages;
     }
 
-    private static List<string> MessageQueue = new List<string>();
 
     public static void QueueMessage(string message)
     {
-        Log.Debug($"Queuing message: {message}");
-        MessageQueue.Add(message);
+        Log.Debug($"Queueing message: {message}");
+        SendChatMessage(message);
     }
 
     public static void QueueMessage(string[] messages)
     {
-        MessageQueue.AddRange(messages);
+        Log.Debug($"Queueing messages: {string.Join(", ", messages)}");
+        SendChatMessage(messages);
     }
 
     public static bool IsAnyRoutineRunning
@@ -186,141 +184,114 @@ public static class Chat
     }
     public static void StopAllRoutines()
     {
-        MessageQueue.Clear();
-        Core.ParallelRunner.FindByName(_sendChatCoroutineName)?.Done();
     }
 
     public static void Tick()
     {
         _updateLastChatUsers.Run();
-        if (MessageQueue.Count > 0 && Core.ParallelRunner.FindByName(_sendChatCoroutineName) == null)
-        {
-            string message = MessageQueue[0];
-            MessageQueue.RemoveAt(0);
-            SendChatMessage(message);
-        }
     }
 
     private static readonly string _sendChatCoroutineName = "AutoSextant.SendChatMessage";
     public static void SendChatMessage(string message)
     {
-        if (Core.ParallelRunner.FindByName(_sendChatCoroutineName) == null)
-        {
-            Core.ParallelRunner.Run(Send(new string[] { message }), AutoSextant.Instance, _sendChatCoroutineName);
-        }
-        else
-        {
-            Log.Error("Cannot send chat message while another message is being sent");
-            return;
-        }
+        Instance.Scheduler.AddTask(Send([message]), "Chat.SendChatMessage");
     }
     public static void SendChatMessage(string[] message)
     {
-        if (Core.ParallelRunner.FindByName(_sendChatCoroutineName) == null)
-        {
-            Core.ParallelRunner.Run(Send(message), AutoSextant.Instance, _sendChatCoroutineName);
-        }
-        else
-        {
-            Log.Error("Cannot send chat message while another message is being sent");
-            return;
-        }
+        Instance.Scheduler.AddTask(Send(message), "Chat.SendChatMessage");
     }
 
-    public static IEnumerator Clear()
+    public static async SyncTask<bool> Clear()
     {
-        yield return Open();
+        await Open();
 
         if (CurrentInput == null || CurrentInput == "")
-            yield break;
+            return true;
 
 
         // second method: select all and delete
-        Input.KeyDown(Keys.ControlKey);
-        yield return Input.KeyPress(Keys.A);
-        Input.KeyUp(Keys.ControlKey);
-        yield return Input.KeyPress(Keys.Delete);
+        await InputAsync.KeyDown(Keys.ControlKey);
+        await InputAsync.KeyPress(Keys.A);
+        await InputAsync.KeyUp(Keys.ControlKey);
+        await InputAsync.KeyPress(Keys.Delete);
 
-        yield return new WaitFunctionTimed(() => CurrentInput == null, false, 100, "Chat input not cleared (2)");
+        await InputAsync.Wait(() => CurrentInput == null, 100, "Chat input not cleared (2)");
 
         // third method: just backspace until empty
         while (CurrentInput != null)
         {
-            yield return Input.KeyPress(Keys.Back);
+            await InputAsync.KeyPress(Keys.Back);
         }
-        yield return new WaitFunctionTimed(() => CurrentInput == null, true, 100, "Chat input not cleared (3)");
+        await InputAsync.Wait(() => CurrentInput == null, 100, "Chat input not cleared (3)");
+        return true;
     }
 
-    public static IEnumerator Replace()
+    public static async SyncTask<bool> Replace()
     {
-        yield return Open();
+        await Open();
 
         if (CurrentInput != null && CurrentInput != "")
         {
-            Input.KeyDown(Keys.ControlKey);
-            yield return Input.KeyPress(Keys.A);
-            Input.KeyUp(Keys.ControlKey);
+            await InputAsync.KeyDown(Keys.ControlKey);
+            await InputAsync.KeyPress(Keys.A);
+            await InputAsync.KeyUp(Keys.ControlKey);
         }
+        return true;
     }
 
-    public static IEnumerator Send(string[] messages, bool replace = true)
+    public static async SyncTask<bool> Send(string[] messages, bool replace = true)
     {
         foreach (var message in messages)
         {
-            yield return Open();
+            await Open();
             if (replace)
-                yield return Replace();
+                await Replace();
             else
-                yield return Clear();
+                await Clear();
 
             Util.SetClipBoardText(message);
-            yield return new WaitFunctionTimed(() => Util.GetClipboardText() == message, true, 1000, "Clipboard text not set");
-            Input.KeyDown(Keys.ControlKey);
-            yield return Input.KeyPress(Keys.V);
-            Input.KeyUp(Keys.ControlKey);
+            await InputAsync.Wait(() => Util.GetClipboardText() == message, 1000, "Clipboard text not set");
+            await InputAsync.KeyDown(Keys.ControlKey);
+            await InputAsync.KeyPress(Keys.V);
+            await InputAsync.KeyUp(Keys.ControlKey);
 
-            yield return new WaitFunctionTimed(() => CurrentInput == message, true, 1000, "Chat input not set to message");
+            await InputAsync.Wait(() => CurrentInput == message, 1000, "Chat input not set to message");
 
-            yield return Input.KeyPress(Keys.Enter);
-            yield return new WaitFunctionTimed(() => !IsOpen, true, 1000, "Chat window not closed");
+            await InputAsync.KeyPress(Keys.Enter);
+
+            await InputAsync.Wait(() => !IsOpen, 1000, "Chat window not closed");
         }
+        return true;
     }
 
     public static void ChatWith(string username)
     {
-        if (Core.ParallelRunner.FindByName(_sendChatCoroutineName) == null)
-        {
-            Core.ParallelRunner.Run(ChatWithUser(username), AutoSextant.Instance, _sendChatCoroutineName);
-        }
-        else
-        {
-            Log.Error("Cannot send chat message while another message is being sent");
-            return;
-        }
+        Instance.Scheduler.AddTask(ChatWithUser(username), "Chat.ChatWithUser");
     }
 
-    public static IEnumerator ChatWithUser(string username)
+    public static async SyncTask<bool> ChatWithUser(string username)
     {
-        yield return Open();
-        yield return Replace();
+        await Open();
+        await Replace();
 
         Util.SetClipBoardText($"@{username} ");
-        yield return new WaitFunctionTimed(() => Util.GetClipboardText() == $"@{username} ", true, 1000, "Clipboard text not set");
-        Input.KeyDown(Keys.ControlKey);
-        yield return Input.KeyPress(Keys.V);
-        Input.KeyUp(Keys.ControlKey);
+        await InputAsync.Wait(() => Util.GetClipboardText() == $"@{username} ", 1000, "Clipboard text not set");
+        await InputAsync.KeyDown(Keys.ControlKey);
+        await InputAsync.KeyPress(Keys.V);
+        await InputAsync.KeyUp(Keys.ControlKey);
 
-        yield return new WaitFunctionTimed(() => CurrentInput == $"@{username} ", true, 1000, "Chat input not set to message");
+        await InputAsync.Wait(() => CurrentInput == $"@{username} ", 1000, "Chat input not set to message");
+        return true;
     }
 
-    public static IEnumerator Open()
+    public static async SyncTask<bool> Open()
     {
-        yield return Util.ForceFocus();
+        await Util.ForceFocusAsync();
         if (!IsOpen)
         {
-            yield return Input.KeyPress(Keys.Enter);
+            await InputAsync.KeyPress(Keys.Enter);
         }
 
-        yield return new WaitFunctionTimed(() => IsOpen, true, 1000, "Cannot open chat");
+        return await InputAsync.Wait(() => IsOpen, 1000, "Cannot open chat");
     }
 }

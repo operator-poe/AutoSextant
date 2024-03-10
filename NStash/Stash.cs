@@ -46,43 +46,40 @@ public static class Stash
     }
   }
 
-  public static IEnumerator ScrollToTab(int index)
+  public static async SyncTask<bool> ScrollToTab(int index)
   {
-    Input.SetCursorPos(Ex.TabSwitchBar.GetClientRect().Center);
-    yield return new WaitTime(10);
-    Input.KeyDown(System.Windows.Forms.Keys.ControlKey);
+    await InputAsync.MoveMouseToElement(Ex.TabSwitchBar.GetClientRect().Center);
+    await InputAsync.Wait(10);
+    await InputAsync.KeyDown(System.Windows.Forms.Keys.ControlKey);
     while (Ex.StashElement.IndexVisibleStash != index)
     {
       if (index < Ex.StashElement.IndexVisibleStash)
       {
-        Input.VerticalScroll(true, 1);
+        InputAsync.VerticalScroll(true, 1);
       }
       else
       {
-        Input.VerticalScroll(false, 1);
+        InputAsync.VerticalScroll(false, 1);
       }
-      yield return new WaitTime(1);
+      await InputAsync.Wait(1);
     }
-    yield return new WaitFunctionTimed(() =>
-         Ex.StashElement.AllInventories[index] != null
-    , false, 500);
-    Input.KeyUp(System.Windows.Forms.Keys.ControlKey);
-    yield break;
+    await InputAsync.Wait(() => Ex.StashElement.AllInventories[index] != null, 500);
+    await InputAsync.KeyUp(System.Windows.Forms.Keys.ControlKey);
+    return true;
   }
 
-  public static IEnumerator ClickTab(int index)
+  public static async SyncTask<bool> ClickTab(int index)
   {
     if (IsTabVisible(index))
     {
-      yield return Input.ClickElement(Ex.TabButtons[index].GetClientRect().Center);
-      yield return new WaitFunctionTimed(() =>
-           Ex.StashElement.AllInventories[index] != null
-      , false, 500);
+      await InputAsync.ClickElement(Ex.TabButtons[index].GetClientRect().Center);
+      await InputAsync.Wait(() => Ex.StashElement.AllInventories[index] != null, 500);
     }
     else
     {
-      yield return ScrollToTab(index);
+      return await ScrollToTab(index);
     }
+    return true;
   }
 
   public static bool IsTabVisible(int index)
@@ -95,7 +92,7 @@ public static class Stash
     return Ex.StashPanel.GetClientRect().Intersects(tabNode.GetClientRect());
   }
 
-  public static IEnumerator SelectTab(int index)
+  public static async SyncTask<bool> SelectTab(int index)
   {
     if (index < 0 || index >= Tabs.Count)
     {
@@ -103,20 +100,20 @@ public static class Stash
     }
     if (index == Ex.StashElement.IndexVisibleStash)
     {
-      yield break;
+      return true;
     }
     if (IsTabVisible(index))
     {
-      yield return Input.ClickElement(Ex.TabButtons[index].GetClientRect().Center);
+      return await InputAsync.ClickElement(Ex.TabButtons[index].GetClientRect().Center);
     }
     else
     {
-      yield return ScrollToTab(index);
+      return await ScrollToTab(index);
     }
   }
-  public static IEnumerator SelectTab(string name)
+  public static async SyncTask<bool> SelectTab(string name)
   {
-    return SelectTab(Tabs.FindIndex(t => t.Name == name));
+    return await SelectTab(Tabs.FindIndex(t => t.Name == name));
   }
 
   public static int TabIndex(string name)
@@ -124,19 +121,18 @@ public static class Stash
     return Tabs.FindIndex(t => t.Name == name);
   }
 
-  public static IEnumerator EnsureStashesAreLoaded(List<string> stashNames)
+  public static async SyncTask<bool> EnsureStashesAreLoaded(List<string> stashNames)
   {
-    yield return Util.ForceFocus();
-    yield return AutoSextant.Instance.EnsureStash();
+    await Util.ForceFocusAsync();
+    await AutoSextant.Instance.EnsureStash();
     foreach (var t in stashNames)
     {
-      yield return SelectTab(t);
+      await SelectTab(t);
       int TabIndex = Stash.TabIndex(t);
-      yield return new WaitFunctionTimed(() =>
-           Ex.StashElement.AllInventories[TabIndex] != null
-      , false, 500);
+      await InputAsync.Wait(() => Ex.StashElement.AllInventories[TabIndex] != null, 500);
     }
-    yield return new WaitTime(20);
+    await InputAsync.Wait(20);
+    return true;
   }
 
   public static bool AreStashesLoaded(List<string> stashNames)

@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using System.Text.RegularExpressions;
-using System.Threading.Tasks.Dataflow;
 using ExileCore.Shared.Nodes;
 using ImGuiNET;
 
@@ -18,12 +17,13 @@ public enum FullfillmentStatus
 
 public static class WhisperManager
 {
-    public static List<Whisper> Whispers = Chat.GetPastMessages("@From", Whisper.WhisperPatterns.Select(x => new Regex(x.Item1)).ToList(), 3).Select(Whisper.Create).Where(x => x != null).ToList();
-    // public static List<Whisper> Whispers = new List<Whisper>
-    // {
-    //     Whisper.Create("@From _______test___________________: wtb 80 chayula"),
-    //     Whisper.Create("@From _____Test_____________: WTB 300 Strongbox Enraged 274c each, 4 Beyond 74c each, 600 Resonating Shrine 88c each. Total 3828c (16 div + 100c)"),
-    // }.Where(x => x != null).ToList();//.Select(x => { x.InArea = true; return x; }).ToList();
+    public static AutoSextant Instance = AutoSextant.Instance;
+    // public static List<Whisper> Whispers = Chat.GetPastMessages("@From", Whisper.WhisperPatterns.Select(x => new Regex(x.Item1)).ToList(), 3).Select(Whisper.Create).Where(x => x != null).ToList();
+    public static List<Whisper> Whispers = new List<Whisper>
+    {
+        Whisper.Create("@From _______test___________________: wtb 80 chayula"),
+        Whisper.Create("@From _____Test_____________: WTB 300 Strongbox Enraged 274c each, 4 Beyond 74c each, 600 Resonating Shrine 88c each. Total 3828c (16 div + 100c)"),
+    }.Where(x => x != null).ToList();//.Select(x => { x.InArea = true; return x; }).ToList();
 
     public static List<Whisper> ActiveWhispers
     {
@@ -113,12 +113,12 @@ public static class WhisperManager
             for (int i = 0; i < 10; i++)
             {
                 var key = Util.MapIndexToNumPad(i);
-                Input.RegisterKey(key);
+                InputAsync.RegisterKey(key);
                 _hotkeys[i] = new HotkeyNode(Util.MapIndexToNumPad(i));
             }
-            Input.RegisterKey(System.Windows.Forms.Keys.Down);
+            InputAsync.RegisterKey(System.Windows.Forms.Keys.Down);
             _hotkeys[10] = new HotkeyNode(System.Windows.Forms.Keys.Down);
-            Input.RegisterKey(System.Windows.Forms.Keys.Up);
+            InputAsync.RegisterKey(System.Windows.Forms.Keys.Up);
             _hotkeys[11] = new HotkeyNode(System.Windows.Forms.Keys.Up);
             _hotKeysRegistered = true;
         }

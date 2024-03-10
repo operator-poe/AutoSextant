@@ -12,6 +12,7 @@ namespace AutoSextant.SellAssistant;
 
 public static class SellAssistant
 {
+    private static AutoSextant Instance = AutoSextant.Instance;
     private static bool _enabled = false;
     public static bool Enabled
     {
@@ -54,13 +55,11 @@ public static class SellAssistant
 
     public static readonly string _sellAssistantInitCoroutineName = "AutoSextant.SellAssistant.SellAssistant.Init";
     public static readonly string _sellAssistantTakeFromStashCoroutineName = "AutoSextant.SellAssistant.SellAssistant.TakeFromStash";
-    private static List<(string, int, Action)> ExtractionQueue = new List<(string, int, Action)>();
     public static bool IsAnyRoutineRunning
     {
         get
         {
             return
-                ExtractionQueue.Count > 0 ||
                 Chat.IsAnyRoutineRunning ||
                 TradeManager.IsAnyRoutineRunning ||
                 Core.ParallelRunner.FindByName(_sellAssistantInitCoroutineName) != null ||
@@ -69,7 +68,6 @@ public static class SellAssistant
     }
     public static void StopAllRoutines()
     {
-        ExtractionQueue.Clear();
         Core.ParallelRunner.FindByName(_sellAssistantInitCoroutineName)?.Done();
         Core.ParallelRunner.FindByName(_sellAssistantTakeFromStashCoroutineName)?.Done();
         Chat.StopAllRoutines();
@@ -78,11 +76,14 @@ public static class SellAssistant
 
     public static void AddToExtractionQueue(string mod, int amount, Action callback = null)
     {
-        ExtractionQueue.Add((mod, amount, callback));
+        Instance.Scheduler.AddTask(TakeFromStash(mod, amount, callback), "SellAssistant.TakeFromStash");
     }
     public static void AddToExtractionQueue(List<(string, int, Action)> mods)
     {
-        ExtractionQueue.AddRange(mods);
+        foreach (var mod in mods)
+        {
+            AddToExtractionQueue(mod.Item1, mod.Item2, mod.Item3);
+        }
     }
 
     public static void Enable()
@@ -122,36 +123,39 @@ public static class SellAssistant
         }
     }
 
-    public static IEnumerator Highlight()
+    public static async SyncTask<bool> Highlight()
     {
-        yield return Util.ForceFocus();
-        yield return AutoSextant.Instance.EnsureStash();
+        await Util.ForceFocusAsync();
+        await AutoSextant.Instance.EnsureStash();
         var tft = CompassList.ModNameToPrice[selectedMod];
-        yield return Util.ForceFocus();
+        await Util.ForceFocusAsync();
         Util.SetClipBoardText(tft);
-        yield return new WaitFunctionTimed(() => Util.GetClipboardText() == tft, true, 1000, "Clipboard text not set");
+        await InputAsync.Wait(() => Util.GetClipboardText() == tft, 1000, "Clipboard text not set");
 
-        Input.KeyDown(Keys.ControlKey);
-        yield return Input.KeyPress(Keys.F);
-        Input.KeyUp(Keys.ControlKey);
+        await InputAsync.KeyDown(Keys.ControlKey);
+        await InputAsync.KeyDown(Keys.F);
+        await InputAsync.KeyUp(Keys.F);
+        await InputAsync.KeyUp(Keys.ControlKey);
 
-        yield return new WaitTime(50);
+        await InputAsync.Wait();
 
-        Input.KeyDown(Keys.ControlKey);
-        yield return Input.KeyPress(Keys.V);
-        Input.KeyUp(Keys.ControlKey);
+        await InputAsync.KeyDown(Keys.ControlKey);
+        await InputAsync.KeyDown(Keys.V);
+        await InputAsync.KeyUp(Keys.V);
+        await InputAsync.KeyUp(Keys.ControlKey);
+        return true;
     }
 
-    public static IEnumerator TakeFromStash(string mod = null, int? amount = null, Action callback = null)
+    public static async SyncTask<bool> TakeFromStash(string mod = null, int? amount = null, Action callback = null)
     {
-        yield return Util.ForceFocus();
-        yield return AutoSextant.Instance.EnsureStash();
+        await Util.ForceFocusAsync();
+        await AutoSextant.Instance.EnsureStash();
 
         mod ??= selectedMod;
         amount ??= selectedAmount;
         amount = Math.Min(amount.Value, 60);
 
-        Input.StorePosition();
+        // Input.StorePosition();
 
         List<(string, SharpDX.Vector2)> items = new List<(string, SharpDX.Vector2)>();
         var dumpTabs = I.Settings.DumpTabs.Value.Split(',').Select(x => x.Trim()).ToList();
@@ -183,18 +187,15 @@ public static class SellAssistant
         for (int i = 0; i < amount; i++)
         {
             var item = items[i];
-            yield return NStash.Stash.SelectTab(item.Item1);
-            yield return Input.ClickToInventory(item.Item2);
-            // Input.KeyDown(Keys.ControlKey);
-            // yield return Input.ClickElement(item.Item2);
-            // Input.KeyUp(Keys.ControlKey);
-            // yield return new WaitTime(10);
+            await NStash.Stash.SelectTab(item.Item1);
+            await InputAsync.ClickToInventory(item.Item2);
         }
 
         Stock.RunRefresh(() => RefreshTable());
 
-        Input.RestorePosition();
+        // Input.RestorePosition();
         callback?.Invoke();
+        return true;
     }
 
     public static void Tick()
@@ -209,13 +210,6 @@ public static class SellAssistant
         Chat.Tick();
         TradeManager.Tick();
         PoeStackReport.CheckClipboardForReport();
-
-        if (ExtractionQueue.Count > 0 && Core.ParallelRunner.FindByName(_sellAssistantTakeFromStashCoroutineName) == null)
-        {
-            var (mod, amount, callback) = ExtractionQueue[0];
-            ExtractionQueue.RemoveAt(0);
-            Core.ParallelRunner.Run(new Coroutine(TakeFromStash(mod, amount, callback), AutoSextant.Instance, _sellAssistantTakeFromStashCoroutineName));
-        }
     }
 
     public static void SelectAndTakeFromStash(string mod, int amount)
@@ -224,7 +218,7 @@ public static class SellAssistant
         {
             selectedMod = mod;
             selectedAmount = amount;
-            Core.ParallelRunner.Run(new Coroutine(TakeFromStash(), AutoSextant.Instance, _sellAssistantTakeFromStashCoroutineName));
+            Instance.Scheduler.AddTask(TakeFromStash(), "SellAssistant.TakeFromStash");
         });
     }
 
@@ -294,12 +288,18 @@ public static class SellAssistant
             ImGui.SliderInt("Select Amount", ref selectedAmount, 1, Stock.Get(selectedMod));
             if (ImGui.Button("Take from stash"))
             {
-                ExecuteOnNextTick(() => Core.ParallelRunner.Run(new Coroutine(TakeFromStash(), AutoSextant.Instance, _sellAssistantTakeFromStashCoroutineName)));
+                ExecuteOnNextTick(() =>
+                {
+                    Instance.Scheduler.AddTask(TakeFromStash(), "SellAssistant.TakeFromStash");
+                });
             }
             ImGui.SameLine();
             if (ImGui.Button("Highlight"))
             {
-                ExecuteOnNextTick(() => Core.ParallelRunner.Run(new Coroutine(Highlight(), AutoSextant.Instance, _sellAssistantTakeFromStashCoroutineName)));
+                ExecuteOnNextTick(() =>
+                {
+                    Instance.Scheduler.AddTask(Highlight(), "SellAssistant.Highlight");
+                });
             }
             ImGui.SameLine();
             ImGui.Text("Add to: ");

@@ -98,35 +98,6 @@ public class Stash
   {
     return StashTabCount > MaxShownSidebarStashTabs;
   }
-  public static IEnumerator ClickDropDownMenuStashTabLabel(int tabIndex)
-  {
-    var dropdownMenu = Instance.GameController.Game.IngameState.IngameUi.StashElement.ViewAllStashPanel;
-    var stashTabLabels = dropdownMenu.GetChildAtIndex(1);
-
-    //if the stash tab index we want to visit is less or equal to 30, then we scroll all the way to the top.
-    //scroll amount (clicks) should always be (stash_tab_count - 31);
-    //TODO(if the guy has more than 31*2 tabs and wants to visit stash tab 32 fx, then we need to scroll all the way up (or down) and then scroll 13 clicks after.)
-
-    var clickable = StashLabelIsClickable(tabIndex);
-    // we want to go to stash 32 (index 31).
-    // 44 - 31 = 13
-    // 31 + 45 - 44 = 30
-    // MaxShownSideBarStashTabs + _stashCount - tabIndex = index
-    var index = clickable ? tabIndex : tabIndex - (StashTabCount - 1 - (MaxShownSidebarStashTabs - 1));
-    var pos = stashTabLabels.GetChildAtIndex(index).GetClientRect().Center;
-    Input.MoveMouseToElement(pos);
-    if (SliderPresent())
-    {
-      var clicks = StashTabCount - MaxShownSidebarStashTabs;
-      yield return Input.Delay(3);
-      Input.VerticalScroll(scrollUp: clickable, clicks: clicks);
-      yield return Input.Delay(3);
-    }
-
-    Input.Click(System.Windows.Forms.MouseButtons.Left);
-
-    yield return Input.Delay(100);
-  }
 
   public static NormalInventoryItem GetFirstItemTypeFromStash(string name)
   {

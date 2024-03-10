@@ -42,45 +42,44 @@ public class Item
     Position = position;
   }
 
-  public IEnumerator Hover()
+  public async SyncTask<bool> Hover()
   {
-    Input.MoveMouseToElement(Position);
-    yield return Input.Delay(30);
+    await InputAsync.MoveMouseToElement(Position);
+    await InputAsync.Wait();
+    return true;
   }
 
-  public IEnumerator GetStack(bool CtrlClick = false)
+  public async SyncTask<bool> GetStack(bool CtrlClick = false)
   {
     if (CtrlClick)
-    {
-      Input.KeyDown(Keys.ControlKey);
-    }
-    yield return Input.ClickElement(Position, 10);
+      await InputAsync.KeyDown(Keys.ControlKey);
+    await InputAsync.ClickElement(Position);
     if (CtrlClick)
-    {
-      Input.KeyUp(Keys.ControlKey);
-    }
+      await InputAsync.KeyUp(Keys.ControlKey);
+    return true;
   }
 
-  public IEnumerator GetFraction(int num)
+  public async SyncTask<bool> GetFraction(int num)
   {
-    yield return Hover();
-    Input.KeyDown(Keys.ShiftKey);
-    Input.Click(MouseButtons.Left);
-    Input.KeyUp(Keys.ShiftKey);
-    yield return new WaitFunctionTimed(() => Instance.GameController.IngameState.IngameUi.CurrencyShiftClickMenu is { IsVisible: true }, true, 1000, "Split window not opened");
+    await Hover();
+    await InputAsync.KeyDown(Keys.ShiftKey);
+    await InputAsync.Click(MouseButtons.Left);
+    await InputAsync.KeyUp(Keys.ShiftKey);
+    await InputAsync.Wait(() => Instance.GameController.IngameState.IngameUi.CurrencyShiftClickMenu is { IsVisible: true }, 1000, "Split window not opened");
     var numAsString = num.ToString();
 
     // iterate each number and send the key
     foreach (var c in numAsString)
     {
       var key = (Keys)c;
-      Input.KeyDown(key);
-      Input.KeyUp(key);
-      yield return Input.Delay(20);
+      await InputAsync.KeyDown(key);
+      await InputAsync.KeyUp(key);
+      await InputAsync.Wait();
     }
-    yield return Input.Delay(20);
-    Input.KeyDown(Keys.Enter);
-    Input.KeyUp(Keys.Enter);
-    yield return Input.Delay(20);
+    await InputAsync.Wait();
+    await InputAsync.KeyDown(Keys.Enter);
+    await InputAsync.KeyUp(Keys.Enter);
+    await InputAsync.Wait();
+    return true;
   }
 }
