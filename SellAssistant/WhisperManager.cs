@@ -18,12 +18,12 @@ public enum FullfillmentStatus
 public static class WhisperManager
 {
     public static AutoSextant Instance = AutoSextant.Instance;
-    // public static List<Whisper> Whispers = Chat.GetPastMessages("@From", Whisper.WhisperPatterns.Select(x => new Regex(x.Item1)).ToList(), 3).Select(Whisper.Create).Where(x => x != null).ToList();
-    public static List<Whisper> Whispers = new List<Whisper>
-    {
-        Whisper.Create("@From _______test___________________: wtb 80 chayula"),
-        Whisper.Create("@From _____Test_____________: WTB 300 Strongbox Enraged 274c each, 4 Beyond 74c each, 600 Resonating Shrine 88c each. Total 3828c (16 div + 100c)"),
-    }.Where(x => x != null).ToList();//.Select(x => { x.InArea = true; return x; }).ToList();
+    public static List<Whisper> Whispers = Chat.GetPastMessages("@From", Whisper.WhisperPatterns.Select(x => new Regex(x.Item1)).ToList(), 3).Select(Whisper.Create).Where(x => x != null).ToList();
+    // public static List<Whisper> Whispers = new List<Whisper>
+    // {
+    //     Whisper.Create("@From _______test___________________: wtb 80 chayula"),
+    //     Whisper.Create("@From _____Test_____________: WTB 300 Strongbox Enraged 274c each, 4 Beyond 74c each, 600 Resonating Shrine 88c each. Total 3828c (16 div + 100c)"),
+    // }.Where(x => x != null).ToList();//.Select(x => { x.InArea = true; return x; }).ToList();
 
     public static List<Whisper> ActiveWhispers
     {

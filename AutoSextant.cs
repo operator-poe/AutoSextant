@@ -14,7 +14,7 @@ namespace AutoSextant;
 
 public class AutoSextant : BaseSettingsPlugin<AutoSextantSettings>
 {
-    public Scheduler Scheduler = new Scheduler();
+    public Scheduler Scheduler = new();
     internal static AutoSextant Instance;
 
     public override bool Initialise()
@@ -281,6 +281,7 @@ public class AutoSextant : BaseSettingsPlugin<AutoSextantSettings>
                     await InputAsync.KeyDown(System.Windows.Forms.Keys.ShiftKey);
                 }
                 await InputAsync.ClickElement(stone.Position);
+                await InputAsync.Wait();
                 SessionWindow.IncreaseSextantCount();
                 await InputAsync.Wait(() => stone.Price != null && stone.Price.Name != currentName, 100);
                 if (stone.Price == null || stone.Price.Name == currentName)
@@ -313,14 +314,15 @@ public class AutoSextant : BaseSettingsPlugin<AutoSextantSettings>
                 {
                     await InputAsync.UseItem(nextCompass.Position);
                     await InputAsync.ClickElement(stone.Position);
-                    await InputAsync.Wait(() => Cursor.ItemName != null && Cursor.ItemName == "Charged Compass", 100);
+                    await InputAsync.Wait(() => Cursor.ItemName != null && Cursor.ItemName == "Charged Compass", 200);
                 }
                 SessionWindow.AddMod(compassPrice.Name);
                 var count = NInventory.Inventory.InventoryCount;
                 while (NInventory.Inventory.InventoryCount == count || (Cursor.ItemName != null && Cursor.ItemName == "Charged Compass"))
                 {
                     await InputAsync.ClickElement(nextFreeSlot.Position);
-                    await InputAsync.Wait(() => NInventory.Inventory.InventoryCount != count || (Cursor.ItemName != null && Cursor.ItemName == "Charged Compass"), 100);
+                    await InputAsync.Wait();
+                    await InputAsync.Wait(() => NInventory.Inventory.InventoryCount != count || (Cursor.ItemName != null && Cursor.ItemName == "Charged Compass"), 200);
                 }
             }
             await InputAsync.Wait();
